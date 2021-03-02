@@ -16,7 +16,7 @@ install_requires = [
 
 setuptools.setup(
     name='mod9-asr',
-    version='0.1.0',
+    version='0.2.0',
     description='Wrappers over Mod9 ASR Engine TCP Server.',
     long_description=long_description,
     long_description_content_type='text/markdown',

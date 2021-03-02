@@ -67,8 +67,9 @@ class GoogleConfigurationSettingsAndMappings:
             'word-intervals',
             'transcript-formatted',
             'transcript-alternatives',
-            'phrase-alternatives',   # only in Mod9
-            'model',                 # Mod9-only option
+            'phrase-alternatives',       # only in Mod9
+            'phrase-alternatives-bias',  # only in Mod9
+            'model',                     # Mod9-only option
         )
         self.google_allowed_keys = (
             'encoding',
@@ -78,6 +79,7 @@ class GoogleConfigurationSettingsAndMappings:
             'enableAutomaticPunctuation',
             'maxAlternatives',
             'maxPhraseAlternatives',     # only in Mod9
+            'enablePhraseConfidence',    # only in Mod9
             'model',                     # Mod9-only option
         )
 
@@ -102,6 +104,7 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_punctuation_allowed_values = {True, False}
         self.google_max_alternatives_allowed_values = set(i for i in range(31))
         self.google_max_phrase_alternatives_allowed_values = set(i for i in range(1, 101))
+        self.google_phrase_confidence_allowed_values = {True, False}
         self.model_allowed_values = ObjectContainingEverything()
 
         # Group allowed Google values. To be used in following dict.
@@ -241,6 +244,9 @@ def input_to_mod9(google_input_settings, module):
     if 'format' not in mod9_config_settings or mod9_config_settings['format'] == 'wav':
         if 'rate' in mod9_config_settings:
             del mod9_config_settings['rate']
+
+    # Need transcript intervals to mirror Google response format.
+    mod9_config_settings['transcript-intervals'] = True
 
     return mod9_config_settings, mod9_audio_settings
 

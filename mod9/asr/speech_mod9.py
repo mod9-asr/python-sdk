@@ -61,10 +61,12 @@ WordInfo = cloud_speech.WordInfo
 
 # Subclass Google's types required to extend
 #  functionality to include Mod9-only options.
+
+
 # Mod9-only message
-class SpeechRecognitionPhrase(proto.Message):
+class SpeechRecognitionPhraseBias(proto.Message):
     """
-    Phrase alternative hypotheses and model scores. Mod9-only message.
+    Phrase alternative model scores. Mod9-only message.
 
     Attributes:
         am (float):
@@ -73,13 +75,26 @@ class SpeechRecognitionPhrase(proto.Message):
         lm (float):
             The language model score of the phrase, shifted
             so that the most likely phrase has score 0.0.
-        phrase (str):
-            Phrase text representing the words the user spoke.
     """
 
     am = proto.Field(proto.FLOAT, number=1)
     lm = proto.Field(proto.FLOAT, number=2)
-    phrase = proto.Field(proto.STRING, number=3)
+
+
+# Mod9-only message
+class SpeechRecognitionPhrase(proto.Message):
+    """
+    Phrase alternative hypotheses and model scores. Mod9-only message.
+
+    Attributes:
+        bias (SpeechRecognitionPhraseBias):
+            The acoustic and language model scores.
+        phrase (str):
+            Phrase text representing the words the user spoke.
+    """
+
+    bias = proto.Field(SpeechRecognitionPhraseBias, number=1)
+    phrase = proto.Field(proto.STRING, number=2)
 
 
 # Mod9-only message

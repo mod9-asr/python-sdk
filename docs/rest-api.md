@@ -1,10 +1,9 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-[Reference Docs](http://mod9.io/docs) | [Operator Manual](http://mod9.io/operator-manual) | [Python SDK](http://mod9.io/python-sdk) | [REST API](http://mod9.io/rest-api) | [Custom Grammar](http://mod9.io/custom-grammar)
-
-**Version 0.6.0**, last updated November 13, 2020.
+**Version 0.8.0**
 
 # Mod9 ASR REST API
+
 By default, requests to the Mod9 ASR Engine TCPServer must be through a TCP socket.
 The *Mod9 ASR REST API* is a wrapper for the Engine that provides another interface.
 Designed to be a fully-compatible drop-in replacement for the
