@@ -15,11 +15,16 @@ import boto3
 import google.auth
 import google.auth.transport.requests
 import google.resumable_media.requests
+from packaging import version
 
 from mod9.reformat import config
 
 
 class Mod9UnexpectedEngineResponseError(Exception):
+    pass
+
+
+class Mod9IncompatibleEngineVersionError(Exception):
     pass
 
 
@@ -486,3 +491,71 @@ def find_loaded_models_with_rate(rate):
     except Mod9UnexpectedEngineResponseError:
         return []
     return [model for model in models if model['rate'] == rate]
+
+
+def get_version_mod9():
+    """
+    Query Engine for version number.
+
+    Args:
+        None
+
+    Returns:
+        string:
+            The version of the Engine.
+
+    Raises:
+        OSError:
+            Socket errors.
+        TypeError:
+            Version parsing errors.
+    """
+
+    with socket.create_connection(
+        (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
+        timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
+    ) as sock:
+        sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
+
+        sock.sendall('{"command": "get-version"}\n'.encode())
+
+        with sock.makefile(mode='r') as sockfile:
+            response = json.loads(sockfile.readline())
+
+        return response.get('version')
+
+
+def is_compatible_mod9(engine_version_string):
+    """
+    Determine if present wrappers are compatible with Engine version.
+
+    Args:
+        engine_version_string (Union[str, None]):
+            The Engine version to compare to wrapper allowed range.
+
+    Returns:
+        bool:
+            Whether the wrappers and Engine are compatible.
+
+    Raises:
+        OSError:
+            Socket errors.
+        ValueError:
+            Invalid semantic version given to comparator.
+    """
+
+    engine_version = version.parse(engine_version_string)
+
+    lower_bound_string, upper_bound_string = config.WRAPPER_ENGINE_COMPATIBILITY_RANGE
+
+    is_within_lower_bound = True
+    is_within_upper_bound = True
+
+    if lower_bound_string is not None:
+        lower_bound = version.parse(lower_bound_string)
+        is_within_lower_bound = lower_bound <= engine_version  # Lower bound is inclusive.
+    if upper_bound_string is not None:
+        upper_bound = version.parse(upper_bound_string)
+        is_within_upper_bound = engine_version < upper_bound  # Upper bound is exclusive.
+
+    return is_within_lower_bound and is_within_upper_bound

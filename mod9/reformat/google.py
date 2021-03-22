@@ -12,6 +12,10 @@ import logging
 from types import GeneratorType
 
 from mod9.reformat import utils
+from mod9.reformat.config import (
+    WRAPPER_ENGINE_COMPATIBILITY_RANGE,
+    WRAPPER_VERSION,
+)
 
 CHUNKSIZE = 8 * 1024
 
@@ -67,9 +71,9 @@ class GoogleConfigurationSettingsAndMappings:
             'word-intervals',
             'transcript-formatted',
             'transcript-alternatives',
-            'phrase-alternatives',       # only in Mod9
-            'phrase-alternatives-bias',  # only in Mod9
-            'model',                     # Mod9-only option
+            'phrase-alternatives',       # only works in speech_mod9 or REST
+            'phrase-alternatives-bias',  # only works in speech_mod9 or REST
+            'model',                     # Mod9 internal (always happens under the hood)
         )
         self.google_allowed_keys = (
             'encoding',
@@ -78,9 +82,9 @@ class GoogleConfigurationSettingsAndMappings:
             'enableWordTimeOffsets',
             'enableAutomaticPunctuation',
             'maxAlternatives',
-            'maxPhraseAlternatives',     # only in Mod9
-            'enablePhraseConfidence',    # only in Mod9
-            'model',                     # Mod9-only option
+            'maxPhraseAlternatives',     # only works in speech_mod9 or REST
+            'enablePhraseConfidence',    # only works in speech_mod9 or REST
+            'model',                     # Mod9 internal (always happens under the hood)
         )
 
         # Map from (Google key) to (Mod9 key).
@@ -102,8 +106,8 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_confidence_allowed_values = {True, False}
         self.google_timestamp_allowed_values = {True, False}
         self.google_punctuation_allowed_values = {True, False}
-        self.google_max_alternatives_allowed_values = set(i for i in range(31))
-        self.google_max_phrase_alternatives_allowed_values = set(i for i in range(1, 101))
+        self.google_max_alternatives_allowed_values = range(10001)
+        self.google_max_phrase_alternatives_allowed_values = range(10001)
         self.google_phrase_confidence_allowed_values = {True, False}
         self.model_allowed_values = ObjectContainingEverything()
 
@@ -116,6 +120,7 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_punctuation_allowed_values,
             self.google_max_alternatives_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
+            self.google_phrase_confidence_allowed_values,
             self.model_allowed_values,
         )
 
@@ -156,6 +161,15 @@ def input_to_mod9(google_input_settings, module):
             mod9_audio_settings (dict):
                 Mod9-style audio to pass to Mod9 ASR Engine TCP Server.
     """
+
+    engine_version = utils.get_version_mod9()
+    if not utils.is_compatible_mod9(engine_version):
+        raise utils.Mod9IncompatibleEngineVersionError(
+            f"Python SDK version {WRAPPER_VERSION} compatible range"
+            f" {WRAPPER_ENGINE_COMPATIBILITY_RANGE}"
+            f" does not include given Engine of version {engine_version}."
+            ' Please use a compatible SDK-Engine pairing. Exiting.'
+        )
 
     # Convert keys from snake_case to camelCase (if necessary), which we use internally.
     #  See docstring for GoogleConfigurationSettingsAndMappings for more info.
@@ -277,6 +291,12 @@ def google_config_settings_to_mod9(google_config_settings):
             )
         mod9_config_settings['partial'] = google_config_settings.get('interimResults', False)
         google_config_settings = google_config_settings['config']
+
+        # Turn off batch mode for streaming, otherwise partial will not work.
+        mod9_config_settings['batch-threads'] = 0
+    else:
+        # Use max number of threads available for best speed.
+        mod9_config_settings['batch-threads'] = -1
 
     if 'languageCode' not in google_config_settings:
         raise KeyError("Config missing required key 'languageCode'/'language_code'.")

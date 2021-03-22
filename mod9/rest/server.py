@@ -15,11 +15,16 @@ import time
 import uuid
 
 from flask import Flask
-from flask_restful import reqparse, abort, Api, Resource
+from flask_restful import (
+    reqparse,
+    abort,
+    Api,
+    Resource,
+)
 
 from mod9.asr import speech_mod9
 import mod9.reformat.config as config
-from mod9.reformat.utils import get_transcripts_mod9
+from mod9.reformat import utils
 from mod9.reformat import google as reformat
 
 app = Flask(__name__)
@@ -61,8 +66,8 @@ operation_results = {}
 
 def test_host_port():
     """
-    Check if Mod9 ASR Engine is online. Loop until get ``server_ready``
-    response. Log stats.
+    Check if Mod9 ASR Engine is online. Loop until get-info command
+    provides a ``ready`` response. Log stats.
 
     Args:
         None
@@ -71,26 +76,35 @@ def test_host_port():
         None
     """
 
+    engine_version = utils.get_version_mod9()
+    if not utils.is_compatible_mod9(engine_version):
+        raise utils.Mod9IncompatibleEngineVersionError(
+            f"Python SDK version {config.WRAPPER_VERSION} compatible range"
+            f" {config.WRAPPER_ENGINE_COMPATIBILITY_RANGE}"
+            f" does not include given Engine of version {engine_version}."
+            ' Please use a compatible SDK-Engine pairing. Exiting.'
+        )
+
     logging.info(
         "Checking for Mod9 ASR Engine running at %s:%s...",
         config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT
     )
 
-    # Loop sending get-stats until receive ``server_ready is True`` response.
+    # Loop sending get-info until receive ``state`` in response as "ready".
     response = dict()
-    while response.get('server_ready') is not True:
+    while response.get('state') != 'ready':
         with socket.create_connection(
             (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
             timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
         ) as sock:
             sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
-            sock.sendall('{"command": "get-stats"}\n'.encode())
+            sock.sendall('{"command": "get-info"}\n'.encode())
             with sock.makefile(mode='r') as sockfile:
                 response = json.loads(sockfile.readline())
 
-        # Output and sleep except when receive ``server_ready is True`` response.
-        if response['server_ready'] is not True:
+        # Log and sleep except when receiving a ready response.
+        if response.get('state') != 'ready':
             logging.error(
                 "The Engine is not ready yet. Will attempt to connect again in %s seconds...",
                 config.ENGINE_CONNECTION_RETRY_SECONDS,
@@ -133,7 +147,7 @@ def place_reformatted_mod9_response_in_operation_results(
 
     # Talk to Mod9 ASR Engine.
     try:
-        engine_response = get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
+        engine_response = utils.get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
     except (KeyError, ConnectionError):
         logging.exception('Error communicating with Mod9 ASR Engine.')
         abort(500)
@@ -177,7 +191,7 @@ class Recognize(Resource):
 
         # Talk to Mod9 ASR Engine.
         try:
-            engine_response = get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
+            engine_response = utils.get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
         except (KeyError, ConnectionError):
             logging.exception('Error communicating with Mod9 ASR Engine.')
             abort(500)
@@ -288,29 +302,43 @@ api.add_resource(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--engine-host',
+        help='Mod9 ASR Engine host name.'
+             ' Can also be set by MOD9_ASR_ENGINE_HOST environment variable.',
+        default=config.MOD9_ASR_ENGINE_HOST,
+    )
+    parser.add_argument(
+        '--engine-port',
+        help='Mod9 ASR Engine port.'
+             ' Can also be set by MOD9_ASR_ENGINE_PORT environment variable.',
+        type=int,
+        default=config.MOD9_ASR_ENGINE_PORT,
+    )
+    parser.add_argument(
         '--host',
-        help='Mod9 ASR Engine TCP Server host name.'
-             ' Overrides environmental variable `MOD9_ASR_ENGINE_HOST`.',
+        help='REST API host address. Can be set to 0.0.0.0 for external access.',
+        default='127.0.0.1'  # Flask default is internal access only.
     )
     parser.add_argument(
         '--port',
-        help='Mod9 ASR Engine TCP Server port.'
-             ' Overrides environmental variable `MOD9_ASR_ENGINE_PORT`.',
+        help='REST API port number.',
         type=int,
+        default=5000  # Flask default port ... which shouldn't be relevant to users.
+        # TODO: should this default to port 9980 perhaps?
     )
     args = parser.parse_args()
 
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
     if args.host is not None:
-        logging.info("Setting host to '%s' from command line argument.", args.host)
-        config.MOD9_ASR_ENGINE_HOST = args.host
+        logging.info("Setting Engine host to '%s' from command line argument.", args.engine_host)
+        config.MOD9_ASR_ENGINE_HOST = args.engine_host
     if args.port is not None:
-        logging.info("Setting port to '%s' from command line argument.", args.port)
-        config.MOD9_ASR_ENGINE_PORT = args.port
+        logging.info("Setting Engine port to '%s' from command line argument.", args.engine_port)
+        config.MOD9_ASR_ENGINE_PORT = args.engine_port
 
     test_host_port()
-    app.run(debug=False)
+    app.run(host=args.host, port=args.port, debug=False)
 
 
 if __name__ == '__main__':

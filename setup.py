@@ -2,21 +2,24 @@
 
 import setuptools
 
+from mod9.reformat import config
+
 with open('README.md') as f_in:
     long_description = f_in.read()
 
 install_requires = [
-    'boto3>=1.16.5',
-    'flask-restful>=0.3.8',
-    'google-auth>=1.22.1',
+    'boto3>=1.9.0',
+    'flask-restful>=0.3.4',
+    'google-auth>=1.22.0',
     'google-cloud-speech>=2.0.0',
-    'google-resumable-media>=1.1.0',
-    'proto-plus>=1.8.0',
+    'google-resumable-media>=1.0.0',
+    'packaging>=15.0',
+    'proto-plus>=1.4.0',
 ]
 
 setuptools.setup(
     name='mod9-asr',
-    version='0.2.0',
+    version=config.WRAPPER_VERSION,
     description='Wrappers over Mod9 ASR Engine TCP Server.',
     long_description=long_description,
     long_description_content_type='text/markdown',

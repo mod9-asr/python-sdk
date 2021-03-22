@@ -3,5 +3,6 @@ flask-restful==0.3.8
 google-auth==1.22.1
 google-cloud-speech==2.0.0
 google-resumable-media==1.1.0
+packaging==20.9
 proto-plus==1.11.0
 pyaudio==0.2.11

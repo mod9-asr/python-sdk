@@ -15,3 +15,11 @@ CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB
 GS_CHUNK_SIZE = 262144  # Google requires chunks be multiples of 262144
 
 FLASK_ENV = os.getenv('FLASK_ENV', None)
+
+# Current wrappers version.
+WRAPPER_VERSION = '0.3.0'
+
+# Range of compatible Engine versions for current wrappers.
+#  Lower bound is inclusive, upper bound is exclusive.
+#  ``None`` indicates no bound.
+WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('0.8.0', None)

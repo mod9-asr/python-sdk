@@ -1,6 +1,6 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-**Python SDK 0.2.0 (Engine 0.8.0)**
+**Python SDK 0.3.0 (Engine 0.8.0)**
 
 # Mod9 ASR Python SDK
 
