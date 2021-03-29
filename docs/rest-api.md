@@ -1,6 +1,6 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-**Version 0.3.0 (Engine 0.8.0)**
+**Version 0.3.1 (Engine 0.8.0)**
 
 # Mod9 ASR REST API
 
@@ -131,7 +131,7 @@ Sensitive data should not be posted using the demo credentials.
 In addition, the demo credentials have usage rate limits, and so
 may not always work.
 Download the demo credentials
-[here](http://mrp-dev.s3.amazonaws.com/share/wrappers/gstt-demo-credentials.json).
+[here](https://mod9.io/gstt-demo-credentials.json).
 The line below will load and enable the demo credentials.
 ```bash
 gcloud auth activate-service-account gstt-demo@mod9-demo.iam.gserviceaccount.com --key-file=gstt-demo-credentials.json

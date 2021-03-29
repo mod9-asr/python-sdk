@@ -1,6 +1,6 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-**Python SDK 0.3.0 (Engine 0.8.0)**
+**Python SDK 0.3.1 (Engine 0.8.0)**
 
 # Mod9 ASR Python SDK
 
@@ -12,7 +12,7 @@ while also extending functionality of the Google Cloud service.
 
 There are some notable differences:
 1. Google's
-   [`RecognitionAudio.uri`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio.uri)
+   [`RecognitionAudio.uri`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio.uri)
    only allows files to be retrieved from Google Cloud Storage.
    <br>The Mod9 ASR Python SDK accepts audio from more diverse sources:
 
@@ -24,17 +24,17 @@ There are some notable differences:
    | `file://`               | or on a local filesystem.      |
 
 1. Google's
-   [`RecognitionAudio.content`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio.content)
+   [`RecognitionAudio.content`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio.content)
    and
-   [`SpeechClient.recognize()`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/api.html#google.cloud.speech_v1p1beta1.SpeechClient.recognize)
+   [`SpeechClient.recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.recognize)
    restrict audio to be less than 60 seconds.
    <br>The Mod9 ASR Python SDK does not limit the duration of audio.
 1. Google's
-   [`SpeechClient.streaming_recognize()`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/api.html#google.cloud.speech_v1p1beta1.SpeechClient.streaming_recognize)
+   [`SpeechClient.streaming_recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.streaming_recognize)
    restricts audio to be less than 5 minutes.
    <br>The Mod9 ASR Python SDK does not limit the duration of streaming audio.
 1. Google's
-   [`SpeechClient.long_running_recognize()`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/api.html#google.cloud.speech_v1p1beta1.SpeechClient.long_running_recognize)
+   [`SpeechClient.long_running_recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.long_running_recognize)
    can asynchronously process longer audio files.
    <br> The Mod9 ASR Python SDK has not replicated this; it's better served with a Google-compatible [Mod9 ASR REST API](/rest-api).
 1. Google Cloud STT supports a large number of languages for a variety of acoustic conditions.
@@ -65,30 +65,30 @@ For convenience, such a server is deployed at `mod9.io`, listening on port `9900
 **NOTE:** *Sensitive data should not be sent to this evaluation server, because the TCP connection is unencrypted.*
 
 Mod9's implementation of `SpeechClient` replicates Google's
-[`recognize()`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/api.html#google.cloud.speech_v1p1beta1.SpeechClient.recognize)
+[`recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.recognize)
 method, which is synchronous: it processes an entire request before returning a single response.
 This is suitable for transcribing pre-recorded audio files.
 
 The `config` argument can be either a Python `dict` or
-[`RecognitionConfig`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig)
+[`RecognitionConfig`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig)
 object that contains metadata about the audio input,
 as well as [supported configuration options](#supported-configuration-options) that affect the output.
 
 The `audio` argument can be either a Python `dict` or
-[`RecognitionAudio`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio)
+[`RecognitionAudio`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionAudio)
 object that contains either `content` or `uri`.
 While `content` would represent audio bytes directly, here the `uri` specifies a location where audio may be accessed.
 
 The output from `recognize()` is a
-[`RecognizeResponse`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognizeResponse)
+[`RecognizeResponse`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognizeResponse)
 that may contain
-[`SpeechRecognitionResult`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.SpeechRecognitionResult)
+[`SpeechRecognitionResult`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.SpeechRecognitionResult)
 objects.
 
 (Alternatively: the
-[`streaming_recognize()`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/api.html#google.cloud.speech_v1p1beta1.SpeechClient.streaming_recognize)
+[`streaming_recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.streaming_recognize)
 method would return a generator that yields
-[`StreamingRecognitionResult`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.StremaingRecognitionResult)
+[`StreamingRecognitionResult`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.StreamingRecognitionResult)
 objects while audio is being sent and processed.
 This is more suitable for live audio streams.)
 
@@ -102,13 +102,13 @@ The Mod9 ASR Python SDK provides two modules:
 <!-- Pro-tip: when editing, view this on a widescreen monitor -->
 | Option in `config`                                                                                                                                                                                             | Accepted values in<br>`mod9.asr.speech` | Extended support in<br>`speech_mod9` |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
-| [`enable_automatic_punctuation`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_automatic_punctuation)<sup><b>1</b></sup> | `False`, `True`                         |                                      |
-| [`enable_word_confidence`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_confidence)                                | `False`, `True`                         |                                      |
-| [`enable_word_time_offsets`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_time_offsets)                            | `False`, `True`                         |                                      |
-| [`encoding`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.encoding)                                                            | `"LINEAR16"` `"MULAW"`                  | `"ALAW"`                             |
-| [`language_code`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.language_code)                                                  | `"en-US"`                               |                                      |
-| [`sample_rate_hertz`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.sample_rate_hertz)                                          | `8000`, `16000`                         |                                      |
-| [`max_alternatives`](https://googleapis.dev/python/speech/latest/gapic/v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.max_alternatives)<sup><b>2</b></sup>                         | `1`, ... , `10000`                      |                                      |
+| [`enable_automatic_punctuation`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_automatic_punctuation)<sup><b>1</b></sup> | `False`, `True`                         |                                      |
+| [`enable_word_confidence`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_confidence)                                | `False`, `True`                         |                                      |
+| [`enable_word_time_offsets`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_time_offsets)                            | `False`, `True`                         |                                      |
+| [`encoding`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.encoding)                                                            | `"LINEAR16"` `"MULAW"`                  | `"ALAW"`                             |
+| [`language_code`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.language_code)                                                  | `"en-US"`                               |                                      |
+| [`sample_rate_hertz`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.sample_rate_hertz)                                          | `8000`, `16000`                         |                                      |
+| [`max_alternatives`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.max_alternatives)<sup><b>2</b></sup>                         | `1`, ... , `10000`                      |                                      |
 | [`max_phrase_alternatives`](https://mod9.io/docs#:~:text=phrase-alternatives)<sup><b>3</b></sup>                                                                                                               | N/A                                     | `1`, ... , `100`                     |
 <!--
 See https://stackoverflow.com/a/32119820/281536 for clickable footnotes (e.g. for long-range referencing and returning)
