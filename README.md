@@ -1,31 +1,23 @@
-**Version 0.3.1**
+# Mod9 ASR Python SDK
 
-# Mod9 ASR Python Wrappers
+The *Mod9 ASR Python SDK* is a higher-level interface than the protocol described in the [TCP reference](https://mod9.io/tcp) documentation for the Mod9 ASR Engine.
+This software is designed as a compatible drop-in replacement for:
 
-By default, requests to the Mod9 ASR Engine TCPServer must be through a TCP socket.
-The *Mod9 ASR Python wrappers*  are a set of wrappers for the Engine that provide another interface.
-
-Included are a fully-compatible drop-in replacement for the
-[Google Cloud STT Python Client Library](https://cloud.google.com/speech-to-text/docs/libraries#client-libraries-install-python),
-as well as for the
-[Google Cloud STT REST API](https://cloud.google.com/speech-to-text/docs/reference/rest).
+- [Google Cloud STT Python Client Library](https://cloud.google.com/speech-to-text/docs/libraries#client-libraries-install-python),
+- [Google Cloud STT REST API](https://cloud.google.com/speech-to-text/docs/reference/rest).
 
 For tutorials, please refer to the documentation at
-[mod9.io/python-sdk](https://mod9.io/python-sdk)
+[mod9.io/python](https://mod9.io/python)
 and
-[mod9.io/rest-api](https://mod9.io/rest-api),
-respectively.
+[mod9.io/rest](https://mod9.io/rest).
 
-There are a few methods to install the Mod9 ASR Python Wrappers.
-To install the Mod9 ASR Python wrappers using PyPI, use
+To install the Mod9 ASR Python SDK, if an Internet connection is available:
 ```
 pip3 install mod9-asr
 ```
-which will retrieve the necessary files from PyPI and install.
 
-Alternatively, if you have the source code, you can navigate to the
-`wrappers/python/` directory containing the `setup.py` file
-and run
+Alternatively, to install it from a local source distribution, for example:
 ```
-pip3 install .
+tar xzf mod9-asr-$VERSION.tar.gz
+pip3 install ./mod9-asr-$VERSION
 ```

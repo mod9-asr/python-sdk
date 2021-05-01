@@ -20,13 +20,13 @@ install_requires = [
 setuptools.setup(
     name='mod9-asr',
     version=config.WRAPPER_VERSION,
-    description='Wrappers over Mod9 ASR Engine TCP Server.',
+    description='Mod9 ASR Python SDK and REST API, wrapping the Mod9 ASR Engine.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Mod9 Technologies',
     author_email='support@mod9.com',
     license='BSD 2-Clause',
-    url='http://mod9.io/python-sdk',
+    url='http://mod9.io/python',
     # TODO: classifiers?
     # TODO: platforms?
     packages=setuptools.PEP420PackageFinder.find(),
@@ -40,6 +40,6 @@ setuptools.setup(
 
     # Installs executable under user's PATH.
     entry_points={
-        'console_scripts': ['mod9-rest-server = mod9.rest.server:main'],
+        'console_scripts': ['mod9-asr-rest-api = mod9.rest.server:main'],
     },
 )
