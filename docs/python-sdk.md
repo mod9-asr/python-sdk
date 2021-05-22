@@ -1,10 +1,9 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-**Python SDK 0.3.1 (Engine 0.8.0)**
 
-# Mod9 ASR Python SDK
 
-The Mod9 ASR Python SDK is a higher-level interface than the custom TCP protocol described in the [reference docs](/docs).
+# <a href="https://mod9.com/"><img src="assets/mod9_logo_758x160.png" alt="Mod9" height=33 align="left"/></a> ASR Python SDK
+The *Mod9 ASR Python SDK* is a higher-level interface than the protocol described in the [TCP reference](/tcp) documentation.
 Designed as a compatible drop-in replacement for the
 [Google Cloud STT Python Client Library](https://cloud.google.com/speech-to-text/docs/libraries#client-libraries-install-python),
 Mod9's software enables privacy-protecting on-premise deployment,
@@ -36,24 +35,25 @@ There are some notable differences:
 1. Google's
    [`SpeechClient.long_running_recognize()`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/speech.html#google.cloud.speech_v1p1beta1.services.speech.SpeechClient.long_running_recognize)
    can asynchronously process longer audio files.
-   <br> The Mod9 ASR Python SDK has not replicated this; it's better served with a Google-compatible [Mod9 ASR REST API](/rest-api).
+   <br> The Mod9 ASR Python SDK has not replicated this; it's better served with a Google-compatible [Mod9 ASR REST API](/rest).
 1. Google Cloud STT supports a large number of languages for a variety of acoustic conditions.
    <br>The Mod9 ASR Python SDK only supports US English (8kHz telephone) and Global English (16kHz video).
 
-## Quickstart
+
+## Quick start
 Install the Mod9 ASR Python SDK:
 ```bash
 pip3 install mod9-asr
 ```
 
-To transcribe a sample audio file accessible at [https://mod9.io/hey.wav](https://mod9.io/hey.wav):
+To transcribe a sample audio file accessible at [https://mod9.io/hello_world.wav](https://mod9.io/hello_world.wav):
 ```python
 from mod9.asr.speech import SpeechClient
 
 client = SpeechClient(host='mod9.io', port=9900)
 
 response = client.recognize(config={'language_code': 'en-US'},
-                            audio={'uri': 'https://mod9.io/hey.wav'})
+                            audio={'uri': 'https://mod9.io/hello_world.wav'})
 
 print(response)
 ```
@@ -100,8 +100,8 @@ The Mod9 ASR Python SDK provides two modules:
 * `mod9.asr.speech_mod9` extends this with additional functionality that Google does not support.
 
 <!-- Pro-tip: when editing, view this on a widescreen monitor -->
-| Option in `config`                                                                                                                                                                                             | Accepted values in<br>`mod9.asr.speech` | Extended support in<br>`speech_mod9` |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
+| Option in `config`                                                                                                                                                                                              | Accepted values in<br>`mod9.asr.speech` | Extended support in<br>`speech_mod9` |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
 | [`enable_automatic_punctuation`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_automatic_punctuation)<sup><b>1</b></sup> | `False`, `True`                         |                                      |
 | [`enable_word_confidence`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_confidence)                                | `False`, `True`                         |                                      |
 | [`enable_word_time_offsets`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.enable_word_time_offsets)                            | `False`, `True`                         |                                      |
@@ -109,7 +109,7 @@ The Mod9 ASR Python SDK provides two modules:
 | [`language_code`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.language_code)                                                  | `"en-US"`                               |                                      |
 | [`sample_rate_hertz`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.sample_rate_hertz)                                          | `8000`, `16000`                         |                                      |
 | [`max_alternatives`](https://googleapis.dev/python/speech/latest/speech_v1p1beta1/types.html#google.cloud.speech_v1p1beta1.types.RecognitionConfig.max_alternatives)<sup><b>2</b></sup>                         | `1`, ... , `10000`                      |                                      |
-| [`max_phrase_alternatives`](https://mod9.io/docs#:~:text=phrase-alternatives)<sup><b>3</b></sup>                                                                                                               | N/A                                     | `1`, ... , `100`                     |
+| [`max_phrase_alternatives`](https://mod9.io/docs#:~:text=phrase-alternatives)<sup><b>3</b></sup>                                                                                                                | N/A                                     | `1`, ... , `10000`                   |
 <!--
 See https://stackoverflow.com/a/32119820/281536 for clickable footnotes (e.g. for long-range referencing and returning)
 However, that looks pretty bad when it's "local" footnotes like this, so don't use the links.
@@ -118,24 +118,25 @@ However, that looks pretty bad when it's "local" footnotes like this, so don't u
 <sup><b>2</b></sup> <b>Google STT</b>: only recognizes up to 30 transcript-level alternatives (i.e. N-best), often returning just 1 or 2.<br>
 <sup><b>3</b></sup> <b>Mod9 ASR</b>: more useful intra-transcript representation, derived with a patent-pending algorithm.<br>
 
+[[top]](#)
+
+
 ## Setup
 
-Install the Mod9 ASR Python SDK from PyPI:
+### Install the Mod9 ASR Python SDK from PyPI:
 ```bash
 pip3 install mod9-asr
 ```
 
-A Mod9 ASR Engine server is expected to be run locally (i.e. at `localhost`),
-listening for TCP connections on port `9900`.
-These defaults may be reconfigured with the `MOD9_ASR_ENGINE_HOST` and `MOD9_ASR_ENGINE_PORT` environment variables.
-
-There are several ways to proceed, and some command-line tools are recommended:
-* `docker`: used to run the Mod9 ASR Engine locally.  See [docs.docker.com/get-docker](https://docs.docker.com/get-docker).
-* `wget`: a command-line HTTP client used to conveniently download example files in a shell environment.
-
 
 ### Connect to the Mod9 ASR Engine
-#### Quickstart: use the Mod9 ASR Engine evaluation server
+A Mod9 ASR Engine server is expected to be run locally (i.e. at `localhost`), listening for TCP connections on port `9900`.
+These defaults may be reconfigured with the `MOD9_ASR_ENGINE_HOST` and `MOD9_ASR_ENGINE_PORT` environment variables.
+
+There are three different ways to proceed with this step:
+
+
+#### 1. Quick start: use the Engine evaluation server
 It may be most expedient to use the evaluation server running at `mod9.io`:
 ```bash
 export MOD9_ASR_ENGINE_HOST=mod9.io
@@ -145,9 +146,17 @@ customers are strongly advised that *sensitive data should not be sent to this e
 No data privacy is implied, nor service level promised.
 
 
-#### Recommended: run the Mod9 ASR Engine in a Docker container
-The Engine can be run as a Docker container on a Linux system, or on macOS/Windows
-using [Docker Desktop](https://www.docker.com/products/docker-desktop).
+#### 2. Advanced option: run the Engine on bare-metal hardware
+The Engine software is a standalone Linux binary, statically compiled with [minimal runtime dependencies](server#tcmalloc).
+<br>Contact sales@mod9.com to request a custom-built version that can run natively on macOS, Windows, or ARM64.
+
+If you have access to such software, run `engine 8k 16k` to start the Engine with models used in the following examples.
+
+
+#### 3. Recommended approach: run the Engine in a Docker container
+The Engine can run on Linux via Docker, or on Windows/macOS with Docker Desktop:
+see [docs.docker.com/get-docker](https://docs.docker.com/get-docker).
+
 
 Pull the latest image:
 ```bash
@@ -176,9 +185,9 @@ By default, the Docker image is configured to run with the `8k` model, suitable 
 The [example usage](#example-usage) will need 16kHz audio (e.g. from "wideband" video)
 which is best recognized with the `16k` model.
 
-Overriding the image's default command as `./asr-engine 8k 16k` will load both models:
+Overriding the image's default command as `engine 8k 16k` will load both models:
 ```bash
-docker run -it --rm --name=engine -p 9900:9900 mod9/asr ./asr-engine 8k 16k
+docker run -it --rm --name=engine -p 9900:9900 mod9/asr engine 8k 16k
 ```
 
 The command above also runs this container interactively in the terminal (`-it`)
@@ -196,28 +205,23 @@ The Engine does not peform transport encryption,
 so this server should be accessible only to a private network or the connection should be layered with SSL/TLS.
 
 
-#### Advanced: run the Mod9 ASR Engine on bare-metal hardware
-The Engine software can run as a statically compiled Linux application, outside of a Docker container.
-It can also be specially built to run natively on macOS or Windows.
-With suitably memory-optimized models, the Engine can also run well on embedded devices (ARM64).
-Contact sales@mod9.com for further details.
-
-
 ### Compare with Google Cloud STT (optional)
 This Mod9 ASR Python SDK is designed to emulate the Google Cloud STT Python Client Library,
 and we encourage developers to compare our respective software and services side-by-side to ensure compatibility.
 
 Google Cloud credentials are required for such comparisons, so we share
-[gstt-demo-credentials.json](https://mod9.io/gstt-demo-credentials.json)
+[gstt-demo-credentials.json](/gstt-demo-credentials.json)
 to facilitate testing.
 Download and enable these demo credentials by setting an environment variable in your current shell:
 ```bash
-wget mod9.io/gstt-demo-credentials.json
+curl -O https://mod9.io/gstt-demo-credentials.json
 export GOOGLE_APPLICATION_CREDENTIALS=gstt-demo-credentials.json
 ```
 
 *Sensitive data should not be used with these shared demo credentials*, as it could be seen by other users who are testing.
 Rate throttling will prevent abuse of these limited-use credentials, so Google's service may at times be unavailable.
+
+[[top]](#)
 
 
 ## Example usage
@@ -233,9 +237,9 @@ The Mod9 ASR Python SDK is a **drop-in replacement** for the Google Cloud STT Py
 
 To download Google's sample scripts with a command-line tool:
 ```bash
-wget raw.githubusercontent.com/googleapis/python-speech/master/samples/snippets/transcribe.py
-wget raw.githubusercontent.com/googleapis/python-speech/master/samples/snippets/transcribe_auto_punctuation.py
-wget raw.githubusercontent.com/googleapis/python-speech/master/samples/microphone/transcribe_streaming_mic.py
+curl -LO github.com/googleapis/python-speech/raw/master/samples/snippets/transcribe.py
+curl -LO github.com/googleapis/python-speech/raw/master/samples/snippets/transcribe_auto_punctuation.py
+curl -LO github.com/googleapis/python-speech/raw/master/samples/microphone/transcribe_streaming_mic.py
 ```
 
 Modify lines that call `from google.cloud import speech` to now use `mod9.asr`, for example with a stream editor:
@@ -253,17 +257,17 @@ diff transcribe.py transcribe_mod9.py
 **The modified scripts do not communicate with Google Cloud**;
 the following example usage can even be demonstrated on a laptop with no Interent connection &mdash;
 if configured to
-[run the Mod9 ASR Engine in a Docker container](#recommended-run-the-mod9-asr-engine-in-a-docker-container)
+[run the Mod9 ASR Engine in a Docker container](#recommended-approach-run-the-engine-in-a-docker-container)
 on `localhost`.
 
 
 ### Transcribe audio files with `recognize()`
 Download sample audio files,
-[greetings.wav](https://mod9.io/greetings.wav) (2s @ 16kHz)
+[greetings.wav](/greetings.wav) (2s @ 16kHz)
 and
-[switchboard-70s.wav](https://mod9.io/switchboard.wav) (70s @ 8kHz):
+[SW_4824_B.wav](/SW_4824_B.wav) (5m @ 8kHz):
 ```bash
-wget mod9.io/greetings.wav && wget mod9.io/switchboard-70s.wav
+curl -L -O mod9.io/greetings.wav -O mod9.io/SW_4824_B.wav
 ```
 
 Run the modified sample script:
@@ -278,13 +282,13 @@ Google's `recognize()` method only allows audio duration up to 60 seconds.
 To demonstrate that Mod9 ASR extends support for longer audio,
 run another script (which is also configured for 8kHz and transcript formatting):
 ```bash
-python3 transcribe_auto_punctuation_mod9.py switchboard-70s.wav
+python3 transcribe_auto_punctuation_mod9.py SW_4824_B.wav
 ```
 
 To [compare with Google Cloud STT (optional)](#compare-with-google-cloud-stt-optional), run the original unmodified scripts:
 ```bash
 python3 transcribe.py greetings.wav
-python3 transcribe_auto_punctuation.py switchboard-70s.wav
+python3 transcribe_auto_punctuation.py SW_4824_B.wav
 ```
 The first script produces the same result as Mod9 ASR; meanwhile, Google STT will fail to processs the longer audio file.
 
@@ -300,13 +304,6 @@ To install on a Mac:
 brew install portaudio && pip3 install pyaudio
 ```
 
-NOTE: as of February 2021,
-[PortAudio is broken by macOS Big Sur updates](https://github.com/PortAudio/portaudio/issues/218#issuecomment-777273669).
-Here's a temporary work-around:
-```bash
-brew uninstall portaudio && brew install portaudio --HEAD && pip3 install pyaudio
-```
-
 Running this sample script will record audio from your microphone and print results in real-time:
 ```bash
 python3 transcribe_streaming_mic_mod9.py
@@ -320,16 +317,25 @@ python3 transcribe_streaming_mic.py
 It can be especially helpful to run both of these scripts at the same time, comparing side-by-side in different windows.
 Note that the unmodified script using Google STT will eventually disconnect after reaching their 5-minute streaming limit.
 
+[[top]](#)
+
+
 ## Next steps
-See also the [Mod9 ASR REST API](/rest-api),
+See also the [Mod9 ASR REST API](/rest),
 which can run a Google-compatible service that is accessible to HTTP clients.
 <br>This is especially recommended for asynchronous batch-processing workloads,
 with a POST followed by GET.
 
-The [reference docs](/docs) describe details of the lower-level TCP protocol that is abstracted by the Python SDK and REST API.
+The [TCP reference](/tcp) documentation describes the lower-level protocol that is abstracted by the Python SDK and REST API.
 Using this can enable more extensive functionality,
 including [user-defined words](/custom-words) and [domain-specific grammar](/custom-grammar).
 
-Advanced configuration of the Mod9 ASR Engine is described in the [operator manual](/operator-manual),
+Advanced configuration of the Mod9 ASR Engine is described in the [server operator manual](/server),
 with guidance for deployment.
 Contact support@mod9.com for additional assistance.
+
+[[top]](#)
+
+
+---
+©2019-2021 [Mod9 Technologies](https://mod9.com) (**Engine 0.9.1 : Python SDK 0.4.1**)

@@ -9,7 +9,7 @@ with open('README.md') as f_in:
 
 install_requires = [
     'boto3>=1.9.0',
-    'flask-restful>=0.3.4',
+    'flask-restful>=0.3.9',
     'google-auth>=1.22.0',
     'google-cloud-speech>=2.0.0',
     'google-resumable-media>=1.0.0',
@@ -20,13 +20,13 @@ install_requires = [
 setuptools.setup(
     name='mod9-asr',
     version=config.WRAPPER_VERSION,
-    description='Mod9 ASR Python SDK and REST API, wrapping the Mod9 ASR Engine.',
+    description='Mod9 ASR Python SDK and REST API, high-level interfaces to the Mod9 ASR Engine.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Mod9 Technologies',
     author_email='support@mod9.com',
     license='BSD 2-Clause',
-    url='http://mod9.io/python',
+    url='https://github.com/mod9-asr/python-sdk',
     # TODO: classifiers?
     # TODO: platforms?
     packages=setuptools.PEP420PackageFinder.find(),

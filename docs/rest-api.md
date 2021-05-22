@@ -1,11 +1,9 @@
 <!--NOTE: This is only expected to properly render correctly as Github-flavored Markdown.-->
 
-**Version 0.3.1 (Engine 0.8.0)**
 
-# Mod9 ASR REST API
 
-By default, requests to the Mod9 ASR Engine TCPServer must be through a TCP socket.
-The *Mod9 ASR REST API* is a wrapper for the Engine that provides another interface.
+# <a href="https://mod9.com/"><img src="assets/mod9_logo_758x160.png" alt="Mod9" height=33 align="left"/></a> ASR REST API
+The *Mod9 ASR REST API* is a wrapper for the Engine that provides another interface to the Mod9 ASR Engine.
 Designed to be a fully-compatible drop-in replacement for the
 [Google Cloud STT REST API](https://cloud.google.com/speech-to-text/docs/reference/rest),
 it also extends functionality beyond that offered by Google.
@@ -37,6 +35,7 @@ Google Cloud STT REST API are:
    The Mod9 ASR REST API supports 16-bit linear PCM,
    8-bit μ-law, and 8-bit A-law encodings.
 
+
 ## Supported configuration options
 
 The Mod9 ASR REST API supports a subset of Google's functionality,
@@ -47,11 +46,12 @@ The configuration options supported are tabulated below:
 | `encoding`                     | `"LINEAR16"`, `"MULAW"`, `"ALAW"` | `"ALAW"`        | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#AudioEncoding) |
 | `sampleRateHertz`              | `8000`, `16000`                   | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=Sample%20rate,AudioEncoding.) |
 | `languageCode`                 | `en-US`                           | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=Required.,language%20codes.) |
-| `maxAlternatives`              | `0` <= Integer <=` 30`            | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=Maximum,omitted%2C%20will%20return%20a%20maximum%20of%20one.) |
+| `maxAlternatives`              | `0` <= Integer <=` 10000`         | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=Maximum,omitted%2C%20will%20return%20a%20maximum%20of%20one.) |
 | `enableWordTimeOffsets`        | `False`, `True`                   | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=If%20true,The%20default%20is%20false.) |
 | `enableWordConfidence`         | `False`, `True`                   | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=If%20true%2C%20the%20top%20result%20includes%20a%20list%20of%20words%20and%20the%20confidence,is%20false.) |
 | `enableAutomaticPunctuation`   | `False`, `True`                   | No              | [link](https://cloud.google.com/speech-to-text/docs/reference/rest/v1p1beta1/RecognitionConfig#:~:text=If%20%27true,to%20result%20hypotheses.) |
-| `maxPhraseAlternatives`        | `1` <= Integer <= `100`           | Yes             | N/A, see [Mod9 docs](http://mod9.io:8080/docs?#:~:text=phrase-alternatives) |
+| `maxPhraseAlternatives`        | `1` <= Integer <= `10000`         | Yes             | N/A, see [Mod9 docs](http://mod9.io:8080/docs?#:~:text=phrase-alternatives) |
+
 
 ## Example usage
 The examples below use several command-line tools:
@@ -67,7 +67,7 @@ The examples below use several command-line tools:
        required for audio input via `audio.content`.
 * Optional
     * `docker`: used to run a local, containerized Mod9 ASR Engine TCPServer.
-       Not needed for steps below that rely on the [mod9.io](http://mod9.io) Engine
+       Not needed for steps below that rely on the [mod9.io](https://mod9.io) Engine
        evaluation server.
        To install, follow instructions at
        [docs.docker.com/get-docker](https://docs.docker.com/get-docker).
@@ -93,7 +93,7 @@ a remote server should be accessible only to an internal network,
 or otherwise wrapped to provide security (e.g. see
 [aws.amazon.com/elasticloadbalancing](https://aws.amazon.com/elasticloadbalancing)).
 Below, we include some example calls to an Engine running locally,
-but also to the [mod9.io](http://mod9.io) Engine evaluation server.
+but also to the [mod9.io](https://mod9.io) Engine evaluation server.
 
 The Engine has models for audio with two audio sample rates: 8kHz and 16kHz.
 Models can be loaded when the Engine starts or during run time.
@@ -104,11 +104,11 @@ docker run -d --name=mod9-asr -p 9900:9900 mod9/asr
 To launch an Engine for audio at a rate of 16kHz,
 use the following instead:
 ```bash
-docker run -d --name=mod9-asr -p 9900:9900 mod9/asr ./asr-engine 16k
+docker run -d --name=mod9-asr -p 9900:9900 mod9/asr engine 16k
 ```
 Multiple models can be loaded at start time as follows:
 ```bash
-docker run -d --name=mod9-asr -p 9900:9900 mod9/asr ./asr-engine 8k 16k
+docker run -d --name=mod9-asr -p 9900:9900 mod9/asr engine 8k 16k
 ```
 
 The Engine may take up to 30 seconds to start up.
@@ -130,8 +130,7 @@ of testing and are shared with multiple customers.
 Sensitive data should not be posted using the demo credentials.
 In addition, the demo credentials have usage rate limits, and so
 may not always work.
-Download the demo credentials
-[here](https://mod9.io/gstt-demo-credentials.json).
+Download the [gstt-demo-credentials.json](/gstt-demo-credentials.json).
 The line below will load and enable the demo credentials.
 ```bash
 gcloud auth activate-service-account gstt-demo@mod9-demo.iam.gserviceaccount.com --key-file=gstt-demo-credentials.json
@@ -147,16 +146,16 @@ defaults of `localhost` and `9900`).
 For example, if the Engine is running an 8kHz model locally, exposed at port
 9900, the wrapper can be launched using:
 ```bash
-mod9-rest-server
+mod9-asr-rest-api
 ```
-Or, to connect to the [mod9.io](http://mod9.io) Engine evaluation server
+Or, to connect to the [mod9.io](https://mod9.io) Engine evaluation server
 (which serves 8kHz and 16kHz at port 9900):
 ```bash
-mod9-rest-server --host mod9.io
+mod9-asr-rest-api --host mod9.io
 ```
 The ASR REST API wrapper is exposed at the Flask
 default of `localhost:5000`.
-Sensitive data should not be posted to the [mod9.io](http://mod9.io)
+Sensitive data should not be posted to the [mod9.io](https://mod9.io)
 Engine evaluation server as no attempt is made to provide data
 privacy or transport encryption.
 Additionally, as this is a service provided for convenience of
@@ -181,10 +180,10 @@ to ASR transcription for use cases that have audio longer than 60
 seconds and do not require an asynchronous response.
 
 The following commands will create an example JSON request
-from an audio file with ground truth transcript is "hey john".
+from an audio file with ground truth transcript is "hello world".
 ```bash
-curl -sL rmtg.co/hey.wav -o /tmp/hey.wav
-echo '{"audio": {"content": "'$(base64 < /tmp/hey.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > sync-content-request.json
+curl -sL mod9.io/hello_world.wav -o /tmp/hello_world.wav
+echo '{"audio": {"content": "'$(base64 < /tmp/hello_world.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > sync-content-request.json
 ```
 
 #### Mod9 ASR REST API wrapper
@@ -200,16 +199,16 @@ Note that an absolute path is passed in the `audio.uri` field
 (denoted by a slash following the `file://` scheme), and
 that the wrapper and the client must share the same filesystem.
 ```bash
-curl -sL rmtg.co/hey.wav -o /tmp/hey.wav
-echo '{"audio": {"uri": "file:///tmp/hey.wav"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > sync-uri-request.json
+curl -sL mod9.io/hello_world.wav -o /tmp/hello_world.wav
+echo '{"audio": {"uri": "file:///tmp/hello_world.wav"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > sync-uri-request.json
 curl -H 'Content-Type: application/json' localhost:5000/speech:recognize -d @sync-uri-request.json
 ```
 
 Requests longer than 60 seconds can also be processed by the
-wrapper. For example, try this 70-second audio file:
+wrapper. For example, try this 5 minute audio file:
 ```bash
-curl -sL rmtg.co/switchboard-70s.wav -o /tmp/switchboard-70s.wav
-echo '{"audio": {"content": "'$(base64 < /tmp/switchboard-70s.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > longer-request.json
+curl -sL mod9.io/SW_4824_B.wav -o /tmp/SW_4824_B.wav
+echo '{"audio": {"content": "'$(base64 < /tmp/SW_4824_B.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us"}}' | jq . > longer-request.json
 curl -H 'Content-Type: application/json' localhost:5000/speech:recognize -d @longer-request.json
 ```
 
@@ -256,10 +255,10 @@ as demonstrated below.
 The following commands create a longer JSON request
 that asks for word-level time offsets and confidence scores
 (which are also supported by the synchronous endpoint, above),
-`long-request.json`, with audio of duration 30 seconds.
+`long-request.json`, with audio of 5 minutes duration.
 ```bash
-curl -sL rmtg.co/switchboard-30s.wav -o /tmp/switchboard-30s.wav
-echo '{"audio": {"content": "'$(base64 < /tmp/switchboard-30s.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us", "enableWordConfidence": true, "enableWordTimeOffsets": true}}' | jq . > long-request.json
+curl -sL mod9.io/SW_4824_B.wav -o /tmp/SW_4824_B.wav
+echo '{"audio": {"content": "'$(base64 < /tmp/SW_4824_B.wav | tr -d '\n')'"}, "config": {"sampleRateHertz": 8000, "languageCode": "en-us", "enableWordConfidence": true, "enableWordTimeOffsets": true}}' | jq . > long-request.json
 ```
 
 #### Mod9 ASR REST API wrapper
@@ -308,3 +307,9 @@ The `name` values of recently submitted requests can be viewed at the
 curl -H 'Authorization: Bearer '$(gcloud auth print-access-token) \
      https://speech.googleapis.com/v1p1beta1/operations/
 ```
+
+[[top]](#)
+
+
+---
+©2019-2021 [Mod9 Technologies](https://mod9.com) (**Engine 0.9.1 : Python SDK 0.4.1**)

@@ -7,7 +7,8 @@ import os
 # Current wrappers version.
 # CHANGELOG:
 #   0.4.0 (30 Apr 2021): Rename mod9-rest-server to mod9-asr-rest-api; minor documentation fixes.
-WRAPPER_VERSION = '0.4.0'
+#   0.4.1 (20 May 2021): Additional minor documentation fixes; Flask-RESTful version pinning.
+WRAPPER_VERSION = '0.4.1'
 
 # Range of compatible Engine versions for current wrappers.
 #  Lower bound is inclusive, upper bound is exclusive.
