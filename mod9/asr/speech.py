@@ -122,7 +122,7 @@ class SpeechClient(cloud_speech.SpeechClient):
     def __init__(self, host=None, port=None, *args, **kwargs):
         """OVERRIDE: ignore arguments, set Mod9's custom transport."""
         if host is not None:
-            config.MOD9_ASR_ENGINE_HOST = host
+            config.ASR_ENGINE_HOST = host
         if port is not None:
-            config.MOD9_ASR_ENGINE_PORT = port
+            config.ASR_ENGINE_PORT = port
         self._transport = Mod9ASREngineTransport()

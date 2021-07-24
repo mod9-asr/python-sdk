@@ -6,3 +6,4 @@ google-resumable-media==1.1.0
 packaging==20.9
 proto-plus==1.11.0
 pyaudio==0.2.11
+websockets==9.1

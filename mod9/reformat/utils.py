@@ -5,11 +5,14 @@ Utilities including functions to talk to the Mod9 ASR Engine TCP Server.
 import io
 from itertools import _tee as TeeGeneratorType
 import json
+import logging
 import os
 import requests
 import socket
 import threading
+import time
 from types import GeneratorType
+from urllib.parse import urlparse
 
 import boto3
 import google.auth
@@ -20,11 +23,35 @@ from packaging import version
 from mod9.reformat import config
 
 
+class Mod9IncompatibleEngineVersionError(Exception):
+    pass
+
+
+class Mod9InsufficientEngineCapacityError(Exception):
+    pass
+
+
 class Mod9UnexpectedEngineResponseError(Exception):
     pass
 
 
-class Mod9IncompatibleEngineVersionError(Exception):
+class Mod9EngineFirstResponseNotProcessingError(Mod9UnexpectedEngineResponseError):
+    pass
+
+
+class Mod9EngineResponseNotCompletedError(Mod9UnexpectedEngineResponseError):
+    pass
+
+
+class Mod9UnexpectedEngineStateError(Exception):
+    pass
+
+
+class Mod9DisabledAudioURISchemeError(Exception):
+    pass
+
+
+class Mod9BadRequestError(Exception):
     pass
 
 
@@ -232,10 +259,9 @@ def generator_producer(generator, sock):
         None
     """
 
-    for item in generator:
-        # Chunk-ify items that are larger than specified size.
-        for i in range(0, len(item), config.CHUNK_SIZE):
-            sock.sendall(item[i:i+config.CHUNK_SIZE])
+    for chunk in generator:
+        for i in range(0, len(chunk), config.MAX_CHUNK_SIZE):
+            sock.sendall(chunk[i:i+config.MAX_CHUNK_SIZE])
 
 
 def file_producer(uri, sock):
@@ -253,7 +279,7 @@ def file_producer(uri, sock):
     """
 
     with open(get_local_path(uri), 'rb') as fin:
-        for chunk in iter(lambda: fin.read(config.CHUNK_SIZE), b''):
+        for chunk in iter(lambda: fin.read(config.MAX_CHUNK_SIZE), b''):
             sock.sendall(chunk)
 
 
@@ -273,7 +299,7 @@ def http_producer(uri, sock):
 
     with requests.get(uri, stream=True) as r:
         r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=config.CHUNK_SIZE):
+        for chunk in r.iter_content(chunk_size=config.MAX_CHUNK_SIZE):
             sock.sendall(chunk)
 
 
@@ -341,7 +367,7 @@ def aws_s3_producer(uri, sock):
     # https://botocore.amazonaws.com/v1/documentation/api/latest/reference/response.html#botocore.response.StreamingBody.iter_chunks
     s3c = boto3.client('s3')
     for chunk in s3c.get_object(Bucket=bucket, Key=key)['Body'].iter_chunks(
-        chunk_size=config.CHUNK_SIZE
+        chunk_size=config.MAX_CHUNK_SIZE
     ):
         sock.sendall(chunk)
 
@@ -391,7 +417,7 @@ def get_transcripts_mod9(options, audio_input):
     """
 
     with socket.create_connection(
-        (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
+        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
         timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
     ) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
@@ -404,7 +430,7 @@ def get_transcripts_mod9(options, audio_input):
         sockfile = sock.makefile(mode='r')
         first_response_line = json.loads(sockfile.readline())
         if first_response_line.get('status') != 'processing':
-            raise KeyError(
+            raise Mod9EngineFirstResponseNotProcessingError(
                 f"Did not receive 'processing' from Mod9 ASR Engine. Got '{first_response_line}'."
             )
 
@@ -412,7 +438,7 @@ def get_transcripts_mod9(options, audio_input):
         if isinstance(audio_input, GeneratorType) or isinstance(audio_input, TeeGeneratorType):
             producer = generator_producer
         elif isinstance(audio_input, str):
-            producer = prefix_producer_map.get(audio_input.split(sep='://')[0])
+            producer = prefix_producer_map.get(urlparse(audio_input).scheme)
             if producer is None:
                 allowed_prefixes = '://, '.join(prefix_producer_map) + '://'
                 raise NotImplementedError(
@@ -448,7 +474,7 @@ def get_loaded_models_mod9():
     """
 
     with socket.create_connection(
-        (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
+        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
         timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
     ) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
@@ -459,9 +485,10 @@ def get_loaded_models_mod9():
 
         sockfile = sock.makefile(mode='r')
 
-        get_models_response = json.loads(sockfile.readline())
+        response_raw = sockfile.read()  # expected to be single-line JSON
+        get_models_response = json.loads(response_raw)
         if get_models_response.get('status') != 'completed':
-            raise KeyError(
+            raise Mod9EngineResponseNotCompletedError(
                 f"Got response '{get_models_response}'; must have `.status` field `completed`."
             )
         if 'models' not in get_models_response:
@@ -512,7 +539,7 @@ def get_version_mod9():
     """
 
     with socket.create_connection(
-        (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
+        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
         timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
     ) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
@@ -520,7 +547,8 @@ def get_version_mod9():
         sock.sendall('{"command": "get-version"}\n'.encode())
 
         with sock.makefile(mode='r') as sockfile:
-            response = json.loads(sockfile.readline())
+            response_raw = sockfile.read()  # expected to be single-line JSON
+            response = json.loads(response_raw)
 
         return response.get('version')
 
@@ -559,3 +587,87 @@ def is_compatible_mod9(engine_version_string):
         is_within_upper_bound = engine_version < upper_bound  # Upper bound is exclusive.
 
     return is_within_lower_bound and is_within_upper_bound
+
+
+def test_host_port():
+    """
+    Check if Mod9 ASR Engine is online. Loop until get-info command
+    provides a ``ready`` response. Log stats.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
+
+    engine_version = get_version_mod9()
+    if not is_compatible_mod9(engine_version):
+        raise Mod9IncompatibleEngineVersionError(
+            f"Python SDK version {config.WRAPPER_VERSION} compatible range"
+            f" {config.WRAPPER_ENGINE_COMPATIBILITY_RANGE}"
+            f" does not include given Engine of version {engine_version}."
+            ' Please use a compatible SDK-Engine pairing. Exiting.'
+        )
+
+    logging.info(
+        "Checking for ASR Engine running at %s on port %d ...",
+        config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT
+    )
+
+    # Loop sending get-info until receive ``state`` in response as "ready".
+    response = dict()
+    response_raw = ''
+    while response.get('state') != 'ready':
+        with socket.create_connection(
+            (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
+            timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
+        ) as sock:
+            sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
+
+            sock.sendall('{"command": "get-info"}\n'.encode())
+            with sock.makefile(mode='r') as sockfile:
+                response_raw = sockfile.read()  # expected to be single-line JSON
+                response = json.loads(response_raw)
+
+        # Log and sleep except when receiving a ready response.
+        if response.get('state') == 'starting':
+            logging.warning(
+                "The Engine is still starting. Will attempt to connect again in %s seconds...",
+                config.ENGINE_CONNECTION_RETRY_SECONDS,
+            )
+            time.sleep(config.ENGINE_CONNECTION_RETRY_SECONDS)
+        elif response.get('state') != 'ready':
+            raise Mod9UnexpectedEngineStateError(
+                'Engine responded with unexpected state: ' + response.get('state')
+            )
+
+    if response['requests']['limit'] - response['requests']['active'] == 0:
+        logging.warning('The Engine is at its limit, and unable to accept new requests.')
+
+    logging.info("The ASR Engine is ready: %s", response_raw.strip())
+    # TODO: also report the name of loaded models, from the get-models-info command?
+
+
+def validate_uri_scheme(uri, allowed_uri_schemes):
+    """
+    Check if a URI has scheme in allowed set.
+
+    Args:
+        uri (str):
+            URI with a scheme that may or may not be allowed.
+        allowed_uri_schemes (set[str]):
+            Set of schemes the URI is allowed to have.
+
+    Raises:
+        Mod9DisabledAudioURISchemeError:
+            The error message indicating which schemes are allowed,
+            if given URI had a different scheme, or None if it did not.
+    """
+
+    uri_scheme = urlparse(uri).scheme
+    if uri_scheme not in allowed_uri_schemes:
+        error_message = f"URI '{uri_scheme}' not allowed; server configured to allow:" + \
+                        f" {', '.join(allowed_uri_schemes) if len(allowed_uri_schemes) else None}."
+
+        raise Mod9DisabledAudioURISchemeError(error_message)

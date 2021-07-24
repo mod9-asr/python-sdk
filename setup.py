@@ -15,12 +15,14 @@ install_requires = [
     'google-resumable-media>=1.0.0',
     'packaging>=15.0',
     'proto-plus>=1.4.0',
+    'websockets>=8.0',
 ]
 
 setuptools.setup(
     name='mod9-asr',
     version=config.WRAPPER_VERSION,
-    description='Mod9 ASR Python SDK and REST API, high-level interfaces to the Mod9 ASR Engine.',
+    description='Mod9 ASR Python SDK, REST API, and Websocket Interface:'
+                ' high-level interfaces to the Mod9 ASR Engine.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Mod9 Technologies',
@@ -29,7 +31,7 @@ setuptools.setup(
     url='https://github.com/mod9-asr/python-sdk',
     # TODO: classifiers?
     # TODO: platforms?
-    packages=setuptools.PEP420PackageFinder.find(),
+    packages=setuptools.PEP420PackageFinder.find(exclude=('test',)),
     # TODO: namespace_packages?
     install_requires=install_requires,
     # TODO: extras_require?
@@ -40,6 +42,10 @@ setuptools.setup(
 
     # Installs executable under user's PATH.
     entry_points={
-        'console_scripts': ['mod9-asr-rest-api = mod9.rest.server:main'],
+        'console_scripts': [
+            'mod9-asr-rest-api = mod9.rest.server:main',
+            'mod9-asr-websocket-client = mod9.websocket.client:main',
+            'mod9-asr-websocket-server = mod9.websocket.server:main',
+        ],
     },
 )

@@ -362,6 +362,11 @@ class RecognitionConfig(proto.Message):
             return fewer than ``max_phrase_alternatives``. Valid values
             are ``0``-``100``. A value of ``0`` or ``1`` will return a
             maximum of one. If omitted, will return a maximum of one.
+        latency (float):
+            Mod9-only attribute. Chunk size for ASR processing
+            (in seconds). Low values increase CPU usage; high
+            values degrade endpointing. Default is ``0.24``.
+            Valid values are between ``0.01`` and ``3.0``.
         audio_channel_count (int):
             Mod9: not available at present.
         enable_separate_recognition_per_channel (bool):
@@ -428,6 +433,7 @@ class RecognitionConfig(proto.Message):
     enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
     # Mod9-only option
     max_phrase_alternatives = proto.Field(proto.INT32, number=901)
+    latency = proto.Field(proto.FLOAT, number=902)
 
 
 class StreamingRecognitionConfig(proto.Message):
@@ -500,9 +506,9 @@ class SpeechClient(object):
     def __init__(self, host=None, port=None, *args, **kwargs):
         """Ignore arguments other than host and port, and set Mod9's custom transport."""
         if host is not None:
-            config.MOD9_ASR_ENGINE_HOST = host
+            config.ASR_ENGINE_HOST = host
         if port is not None:
-            config.MOD9_ASR_ENGINE_PORT = port
+            config.ASR_ENGINE_PORT = port
 
     def long_running_recognize(self, request=None, *, config=None, audio=None, **kwargs):
         """

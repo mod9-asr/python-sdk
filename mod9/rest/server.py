@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
 """
-REST API wrapper over the Mod9 ASR Engine TCP Server.
+Mod9 ASR REST API: wrapper over the ASR Engine.
+
+This server implements a RESTful API compatible with Google Cloud STT.
+It can run as a standalone Flask server, but is best deployed via WSGI.
 """
 
 import argparse
 from collections import OrderedDict
 from datetime import datetime
-import json
 import logging
-import socket
 import threading
-import time
 import uuid
 
 from flask import Flask
@@ -27,12 +27,16 @@ import mod9.reformat.config as config
 from mod9.reformat import utils
 from mod9.reformat import google as reformat
 
+
+# Use the standard name for a Flask app, at highest scope, to faciliate WSGI integration.
 app = Flask(__name__)
+
 # Make JSON output readable.
 #  ``RESTFUL_JSON`` is a config var from ``flask_restful`` that
 #  allows JSON formatting similar to ``json.dumps()``, see docs:
 #  https://flask-restful.readthedocs.io/en/latest/extending.html#:~:text=RESTFUL_JSON
 app.config['RESTFUL_JSON'] = {'indent': 2, 'sort_keys': False}
+
 if config.FLASK_ENV is not None:
     app.config['ENV'] = config.FLASK_ENV
 else:
@@ -40,6 +44,8 @@ else:
     #  Note this is not recommended by Flask devs, but should be fine for our purposes:
     #  https://flask.palletsprojects.com/en/1.1.x/config/#environment-and-debug-features
     app.config['ENV'] = 'development'
+
+# Use Flask-RESTful, a well-designed framework with convenient utilities.
 api = Api(app)
 
 # Input parser for Recognize and LongRunningRecognize resources.
@@ -63,58 +69,8 @@ parser.add_argument(
 operation_names = []
 operation_results = {}
 
-
-def test_host_port():
-    """
-    Check if Mod9 ASR Engine is online. Loop until get-info command
-    provides a ``ready`` response. Log stats.
-
-    Args:
-        None
-
-    Returns:
-        None
-    """
-
-    engine_version = utils.get_version_mod9()
-    if not utils.is_compatible_mod9(engine_version):
-        raise utils.Mod9IncompatibleEngineVersionError(
-            f"Python SDK version {config.WRAPPER_VERSION} compatible range"
-            f" {config.WRAPPER_ENGINE_COMPATIBILITY_RANGE}"
-            f" does not include given Engine of version {engine_version}."
-            ' Please use a compatible SDK-Engine pairing. Exiting.'
-        )
-
-    logging.info(
-        "Checking for Mod9 ASR Engine running at %s:%s...",
-        config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT
-    )
-
-    # Loop sending get-info until receive ``state`` in response as "ready".
-    response = dict()
-    while response.get('state') != 'ready':
-        with socket.create_connection(
-            (config.MOD9_ASR_ENGINE_HOST, config.MOD9_ASR_ENGINE_PORT),
-            timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
-        ) as sock:
-            sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
-
-            sock.sendall('{"command": "get-info"}\n'.encode())
-            with sock.makefile(mode='r') as sockfile:
-                response = json.loads(sockfile.readline())
-
-        # Log and sleep except when receiving a ready response.
-        if response.get('state') != 'ready':
-            logging.error(
-                "The Engine is not ready yet. Will attempt to connect again in %s seconds...",
-                config.ENGINE_CONNECTION_RETRY_SECONDS,
-            )
-            time.sleep(config.ENGINE_CONNECTION_RETRY_SECONDS)
-
-    logging.info(
-        "The Engine is ready and responded:\n%s",
-        json.dumps(response, indent=2, sort_keys=True),
-    )
+# Audio URI schemes to accept. Operator can set at server launch; default is to accept none.
+allowed_uri_schemes = config.ASR_REST_API_ALLOWED_URI_SCHEMES
 
 
 def place_reformatted_mod9_response_in_operation_results(
@@ -185,9 +141,16 @@ class Recognize(Resource):
                 args,
                 module=speech_mod9,
             )
-        except Exception:
+        except Exception as e:
             logging.exception('Invalid arguments.')
-            abort(400)
+            abort(400, error=f"Invalid arguments:\n{e}")
+
+        if isinstance(mod9_audio_settings, str):
+            try:
+                utils.validate_uri_scheme(mod9_audio_settings, allowed_uri_schemes)
+            except utils.Mod9DisabledAudioURISchemeError as e:
+                logging.error(e)
+                abort(403, error=str(e))
 
         # Talk to Mod9 ASR Engine.
         try:
@@ -240,9 +203,16 @@ class LongRunningRecognize(Resource):
                 args,
                 module=speech_mod9,
             )
-        except Exception:
+        except Exception as e:
             logging.exception('Invalid arguments.')
-            abort(400)
+            abort(400, error=f"Invalid arguments:\n{e}")
+
+        if isinstance(mod9_audio_settings, str):
+            try:
+                utils.validate_uri_scheme(mod9_audio_settings, allowed_uri_schemes)
+            except utils.Mod9DisabledAudioURISchemeError as e:
+                logging.error(e)
+                abort(403, error=str(e))
 
         # Generate a name for operation and append to list of operations.
         operation_name = str(uuid.uuid4().int)
@@ -300,44 +270,111 @@ api.add_resource(
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--engine-host',
-        help='Mod9 ASR Engine host name.'
-             ' Can also be set by MOD9_ASR_ENGINE_HOST environment variable.',
-        default=config.MOD9_ASR_ENGINE_HOST,
+        help='ASR Engine host name.'
+             ' Can also be set by ASR_ENGINE_HOST environment variable.',
+        default=config.ASR_ENGINE_HOST,
     )
     parser.add_argument(
         '--engine-port',
-        help='Mod9 ASR Engine port.'
-             ' Can also be set by MOD9_ASR_ENGINE_PORT environment variable.',
+        help='ASR Engine port.'
+             ' Can also be set by ASR_ENGINE_PORT environment variable.',
         type=int,
-        default=config.MOD9_ASR_ENGINE_PORT,
+        default=config.ASR_ENGINE_PORT,
     )
     parser.add_argument(
         '--host',
         help='REST API host address. Can be set to 0.0.0.0 for external access.',
-        default='127.0.0.1'  # Flask default is internal access only.
+        default='127.0.0.1'  # Internal access only.
     )
     parser.add_argument(
         '--port',
         help='REST API port number.',
         type=int,
-        default=5000  # Flask default port ... which shouldn't be relevant to users.
-        # TODO: should this default to port 9980 perhaps?
+        default=8080,
+    )
+    parser.add_argument(
+        '--log-level',
+        metavar='LEVEL',
+        help='Verbosity of logging.',
+        default='INFO',
+    )
+    parser.add_argument(
+        '--skip-engine-check',
+        action='store_true',
+        help='When starting server, do not wait for ASR Engine.',
+        default=False,
+    )
+    uri_group = parser.add_argument_group(
+        'Audio URI schemes',
+        'Allow clients to input audio using a variety of URI schemes.',
+    )
+    uri_group.add_argument(
+        '--allow-file-uri',
+        help='Allow clients to use `file://` URI scheme.',
+        action='store_const',
+        const='file',
+    )
+    uri_group.add_argument(
+        '--allow-gs-uri',
+        help='Allow clients to use Google `gs://` URI scheme.',
+        action='store_const',
+        const='gs',
+    )
+    uri_group.add_argument(
+        '--allow-http-uri',
+        help='Allow clients to use `http://` URI scheme.',
+        action='store_const',
+        const='http',
+    )
+    uri_group.add_argument(
+        '--allow-https-uri',
+        help='Allow clients to use `https://` URI scheme.',
+        action='store_const',
+        const='https',
+    )
+    uri_group.add_argument(
+        '--allow-s3-uri',
+        help='Allow clients to use AWS `s3://` URI scheme.',
+        action='store_const',
+        const='s3',
     )
     args = parser.parse_args()
 
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+    # TODO: we should instead adjust the log level of our own logger rather than the root logger.
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=args.log_level.upper())
 
-    if args.host is not None:
-        logging.info("Setting Engine host to '%s' from command line argument.", args.engine_host)
-        config.MOD9_ASR_ENGINE_HOST = args.engine_host
-    if args.port is not None:
-        logging.info("Setting Engine port to '%s' from command line argument.", args.engine_port)
-        config.MOD9_ASR_ENGINE_PORT = args.engine_port
+    global allowed_uri_schemes
+    allowed_uri_schemes = allowed_uri_schemes.union(
+        {
+            args.allow_file_uri,
+            args.allow_gs_uri,
+            args.allow_http_uri,
+            args.allow_https_uri,
+            args.allow_s3_uri,
+        }
+    )
+    if None in allowed_uri_schemes:
+        allowed_uri_schemes.remove(None)
 
-    test_host_port()
+    logging.info(
+        "Accepting URI schemes: %s.",
+        ', '.join(allowed_uri_schemes) if len(allowed_uri_schemes) else None,
+    )
+
+    if 'http' in allowed_uri_schemes and 'https' not in allowed_uri_schemes:
+        logging.warning('REST API set to allow http:// but NOT https:// audio URIs.')
+
+    config.ASR_ENGINE_HOST = args.engine_host
+    config.ASR_ENGINE_PORT = args.engine_port
+    if not args.skip_engine_check:
+        utils.test_host_port()
+
+    # See https://flask.palletsprojects.com/en/2.0.x/deploying/index.html
+    logging.warning('This REST API is being run directly as a Python Flask server.'
+                    ' For production deployment, use WSGI.')
     app.run(host=args.host, port=args.port, debug=False)
 
 

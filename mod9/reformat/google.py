@@ -35,6 +35,17 @@ class ObjectContainingEverything:
         return True
 
 
+# Used to allow number ranges to be requested by user.
+class RealNumericalRangeObject:
+    """Object that returns True if ``x`` is in given numerical range."""
+    def __init__(self, low, high):
+        self.low = low
+        self.high = high
+
+    def __contains__(self, x):
+        return x >= self.low and x < self.high
+
+
 class GoogleConfigurationSettingsAndMappings:
     """
     Hold dicts used to translate keys and values from Google to Mod9
@@ -73,7 +84,9 @@ class GoogleConfigurationSettingsAndMappings:
             'transcript-alternatives',
             'phrase-alternatives',       # only works in speech_mod9 or REST
             'phrase-alternatives-bias',  # only works in speech_mod9 or REST
-            'model',                     # Mod9 internal (always happens under the hood)
+            'latency',                   # only works in speech_mod9 or REST
+            'asr-model',                 # Mod9 internal (always happens under the hood)
+            'nlp-model',                 # Mod9 internal (always happens under the hood)
         )
         self.google_allowed_keys = (
             'encoding',
@@ -84,7 +97,9 @@ class GoogleConfigurationSettingsAndMappings:
             'maxAlternatives',
             'maxPhraseAlternatives',     # only works in speech_mod9 or REST
             'enablePhraseConfidence',    # only works in speech_mod9 or REST
-            'model',                     # Mod9 internal (always happens under the hood)
+            'latency',                   # only works in speech_mod9 or REST
+            'asrModel',                  # Mod9 internal (always happens under the hood)
+            'nlpModel',                  # Mod9 internal (always happens under the hood)
         )
 
         # Map from (Google key) to (Mod9 key).
@@ -109,7 +124,9 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_max_alternatives_allowed_values = range(10001)
         self.google_max_phrase_alternatives_allowed_values = range(10001)
         self.google_phrase_confidence_allowed_values = {True, False}
-        self.model_allowed_values = ObjectContainingEverything()
+        self.latency_allowed_values = RealNumericalRangeObject(0.01, 3.0)
+        self.asr_model_allowed_values = ObjectContainingEverything()
+        self.nlp_model_allowed_values = ObjectContainingEverything()
 
         # Group allowed Google values. To be used in following dict.
         self.google_allowed_values = (
@@ -121,7 +138,9 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_max_alternatives_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
             self.google_phrase_confidence_allowed_values,
-            self.model_allowed_values,
+            self.latency_allowed_values,
+            self.asr_model_allowed_values,
+            self.nlp_model_allowed_values,
         )
 
         # Map from (Mod9 key) to (allowed Google values) for given key.
@@ -245,13 +264,13 @@ def input_to_mod9(google_input_settings, module):
         except UnboundLocalError:
             pass
 
-    if 'rate' in mod9_config_settings and 'model' not in mod9_config_settings:
+    if 'rate' in mod9_config_settings and 'asr-model' not in mod9_config_settings:
         # Set model associated with user-passed rate, but don't overwrite a user-passed model.
         models = utils.find_loaded_models_with_rate(mod9_config_settings['rate'])
         # Use first English model in list -> first loaded model.
         for model in models:
             if model['language'].lower() == 'en-us':
-                mod9_config_settings['model'] = model['name']
+                mod9_config_settings['asr-model'] = model['name']
                 break
 
     # Mod9 TCP does not accept 'rate' argument for 'wav' format.
@@ -342,11 +361,14 @@ def google_config_settings_to_mod9(google_config_settings):
             mod9_config_settings['encoding'] = \
                 settings.google_encoding_to_mod9_encoding[mod9_config_settings['encoding']]
 
-    # Set N-best settings. Always get 1-best or more:
+    # Set N-best settings.
     #  ``result_from_mod9()`` iterates through alternatives.
-    n_best_N = mod9_config_settings.get('transcript-alternatives', 1)
-    # Google sets n_best_N: 0 -> 1.
-    mod9_config_settings['transcript-alternatives'] = n_best_N if n_best_N > 0 else 1
+    n_best_N = mod9_config_settings.get('transcript-alternatives')
+    if n_best_N is not None:
+        if n_best_N == 0:
+            # Google sets n_best_N: 0 -> 1.
+            n_best_N = 1
+        mod9_config_settings['transcript-alternatives'] = n_best_N
 
     # This option only applies with speech_mod9.
     if mod9_config_settings.get('phrase-alternatives'):
@@ -365,7 +387,7 @@ def google_audio_settings_to_mod9(google_audio_settings):
             Google-style audio.
 
     Returns:
-        dict:
+        Union[str, Iterable[bytes]]:
             Mod9-style audio to pass to Mod9 ASR Engine TCP Server.
     """
 
@@ -433,9 +455,15 @@ def result_from_mod9(mod9_results):
                     alternative['transcript'] += mod9_alternative['transcript']
                 alternatives.append(alternative)
         else:
-            # Partial results (``.final`` == ``False``) from Mod9 do not have alternatives.
+            # Partial results (``.final`` == ``False``) from Mod9 do not have alternatives
+            #  or ``.transcript_formatted``.
+            #  Requests without transcript alternatives do not have alternatives,
+            #  but may have ``.transcript_formatted``.
             alternative = build_google_alternative(mod9_result['result_index'])
-            alternative['transcript'] += mod9_result['transcript']
+            if 'transcript_formatted' in mod9_result:
+                alternative['transcript'] += mod9_result['transcript_formatted']
+            else:
+                alternative['transcript'] += mod9_result['transcript']
             alternatives.append(alternative)
 
         # Build the WordInfo if Mod9 has returned word-level results.
