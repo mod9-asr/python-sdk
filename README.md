@@ -12,6 +12,9 @@ and
 [mod9.io/rest](https://mod9.io/rest)
 for further documentation and examples.
 
+In addition, this package provides a WebSocket interface:
+see [mod9.io/websocket](https://mod9.io/websocket) for a demonstration.
+
 To install the Mod9 ASR Python SDK, if an Internet connection is available:
 ```bash
 pip3 install mod9-asr

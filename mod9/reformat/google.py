@@ -43,7 +43,7 @@ class RealNumericalRangeObject:
         self.high = high
 
     def __contains__(self, x):
-        return x >= self.low and x < self.high
+        return x >= self.low and x <= self.high
 
 
 class GoogleConfigurationSettingsAndMappings:
@@ -415,7 +415,7 @@ def google_audio_settings_to_mod9(google_audio_settings):
     return mod9_audio_settings
 
 
-def result_from_mod9(mod9_results):
+def result_from_mod9(mod9_results, req_logger=None):
     """
     Map from Mod9 TCP server-style output to Google-style output.
 
@@ -435,12 +435,15 @@ def result_from_mod9(mod9_results):
             if mod9_result['status'] == 'failed':
                 raise Mod9EngineFailedStatusError(f"Mod9 server issues 'failed': {mod9_result}.")
             elif mod9_result['status'] != 'completed':
-                logging.error("Unexpected Mod9 server response: %s.", mod9_result)
+                if req_logger:
+                    req_logger.error("Unexpected Mod9 server response: %s.", mod9_result)
+                else:
+                    logging.error("Unexpected Mod9 server response: %s.", mod9_result)
             else:
                 # Status 'completed' is final response (with no transcript).
                 break
 
-        if 'result_index' not in mod9_result and 'warning' in mod9_result:
+        if 'result_index' not in mod9_result:
             # This is likely benign ... let's ignore it.
             # TODO: should our module have logging?
             continue

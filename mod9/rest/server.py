@@ -11,6 +11,7 @@ import argparse
 from collections import OrderedDict
 from datetime import datetime
 import logging
+import logging.config
 import threading
 import uuid
 
@@ -26,6 +27,28 @@ from mod9.asr import speech_mod9
 import mod9.reformat.config as config
 from mod9.reformat import utils
 from mod9.reformat import google as reformat
+
+# Configure logging to work well with either WSGI or development webserver.
+#  See: https://flask.palletsprojects.com/en/2.0.x/logging/#basic-configuration
+logging.config.dictConfig({
+    'version': 1,
+    'formatters': {
+        'default': {
+            'format': "[%(asctime)s] [%(levelname)s]\t%(message)s",
+        }
+    },
+    'handlers': {
+        'wsgi': {
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://flask.logging.wsgi_errors_stream',
+            'formatter': 'default'
+        }
+    },
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi']
+    }
+})
 
 
 # Use the standard name for a Flask app, at highest scope, to faciliate WSGI integration.
@@ -72,11 +95,48 @@ operation_results = {}
 # Audio URI schemes to accept. Operator can set at server launch; default is to accept none.
 allowed_uri_schemes = config.ASR_REST_API_ALLOWED_URI_SCHEMES
 
+# Incrementing request ID counter and logger adapter to prepend to each request.
+request_id = 0
+logger = logging.getLogger(__name__)
+
+
+class CustomLoggerAdapter(logging.LoggerAdapter):
+    """
+    Prepend ``request_id`` and ``rest_uuid`` to logs.
+
+    E.g. see for usage:
+    https://docs.python.org/3/howto/logging-cookbook.html#using-loggeradapters-to-impart-contextual-information
+    """
+    def process(self, msg, kwargs):
+        return f"[{self.extra['request_id']}:{self.extra['rest_uuid'][:8]}] {msg}", kwargs
+
+
+def make_successful_response_headers(rest_uuid, engine_uuid=None):
+    """
+    Prepare successful response headers.
+
+    Args:
+        rest_uuid (str):
+            Request UUID assigned by REST API.
+        engine_uuid (Union[str, None]):
+            UUID received from Engine for request, or None.
+    Returns:
+    """
+
+    headers = {
+        'X-Mod9-ASR-REST-API-UUID': rest_uuid,
+    }
+    if engine_uuid:
+        headers['X-Mod9-ASR-Engine-UUID'] = engine_uuid
+
+    return headers
+
 
 def place_reformatted_mod9_response_in_operation_results(
     mod9_config_settings,
     mod9_audio_settings,
     operation_name,
+    req_logger,
 ):
     """
     Get and format response from Mod9 ASR Engine. Place response in
@@ -105,14 +165,18 @@ def place_reformatted_mod9_response_in_operation_results(
     try:
         engine_response = utils.get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
     except (KeyError, ConnectionError):
-        logging.exception('Error communicating with Mod9 ASR Engine.')
+        req_logger.exception('Error communicating with Mod9 ASR Engine.')
         abort(500)
+
+    # First Engine response line contains request UUID; store for logging.
+    first_response_line = next(engine_response)
+    engine_uuid = first_response_line.get('uuid')
 
     # Place response in operation_results.
     operation_results[operation_name]['response'] = OrderedDict(
         [
             ('@type', response_type),
-            ('results', list(reformat.result_from_mod9(engine_response))),
+            ('results', list(reformat.result_from_mod9(engine_response, req_logger=req_logger))),
         ]
     )
     operation_results[operation_name]['done'] = True
@@ -128,12 +192,20 @@ def place_reformatted_mod9_response_in_operation_results(
     operation_results[operation_name]['metadata'].move_to_end('startTime')
     operation_results[operation_name]['metadata'].move_to_end('lastUpdateTime')
 
+    if engine_uuid is not None:
+        req_logger.info("Engine UUID %s completed.", engine_uuid[:8])
+
 
 class Recognize(Resource):
     """Implement synchronous ASR for ``/recognize`` endpoint."""
 
     def post(self):
         """Perform synchronous ASR on POSTed config and audio."""
+        global request_id
+        rest_uuid = str(uuid.uuid4())
+        req_logger = CustomLoggerAdapter(logger, {'rest_uuid': rest_uuid, 'request_id': request_id})
+        request_id += 1
+
         # Translate request -> Mod9 format.
         args = parser.parse_args()
         try:
@@ -142,30 +214,39 @@ class Recognize(Resource):
                 module=speech_mod9,
             )
         except Exception as e:
-            logging.exception('Invalid arguments.')
+            req_logger.exception('Invalid arguments.')
             abort(400, error=f"Invalid arguments:\n{e}")
 
         if isinstance(mod9_audio_settings, str):
             try:
                 utils.validate_uri_scheme(mod9_audio_settings, allowed_uri_schemes)
             except utils.Mod9DisabledAudioURISchemeError as e:
-                logging.error(e)
+                req_logger.error(e)
                 abort(403, error=str(e))
 
         # Talk to Mod9 ASR Engine.
         try:
             engine_response = utils.get_transcripts_mod9(mod9_config_settings, mod9_audio_settings)
         except (KeyError, ConnectionError):
-            logging.exception('Error communicating with Mod9 ASR Engine.')
+            req_logger.exception('Error communicating with Mod9 ASR Engine.')
             abort(500)
 
+        # First Engine response line contains request UUID; store for logging.
+        first_response_line = next(engine_response)
+        engine_uuid = first_response_line.get('uuid')
+
         # Translate response -> external API format.
-        response = {'results': list(reformat.result_from_mod9(engine_response))}
+        response = {
+            'results': list(reformat.result_from_mod9(engine_response, req_logger=req_logger))
+        }
 
         # Hack to remove .isFinal field from response.
         [result.pop('isFinal') for result in response['results']]
 
-        return response
+        if engine_uuid is not None:
+            req_logger.info("Engine UUID %s completed.", engine_uuid[:8])
+
+        return response, 200, make_successful_response_headers(rest_uuid, engine_uuid)
 
 
 class Operations(Resource):
@@ -175,7 +256,14 @@ class Operations(Resource):
 
     def get(self):
         """Output finished and presently running operation names."""
-        return {'operations': list(reversed(operation_names))}
+        global request_id
+        rest_uuid = str(uuid.uuid4())
+        req_logger = CustomLoggerAdapter(logger, {'rest_uuid': rest_uuid, 'request_id': request_id})
+        request_id += 1
+
+        req_logger.info('Fetched operations.')
+        headers = make_successful_response_headers(rest_uuid)
+        return {'operations': list(reversed(operation_names))}, 200, headers
 
 
 class GetOperationByName(Resource):
@@ -186,7 +274,14 @@ class GetOperationByName(Resource):
 
     def get(self, operation_name):
         """Output operation with given operation name."""
-        return operation_results[str(operation_name)]
+        global request_id
+        rest_uuid = str(uuid.uuid4())
+        req_logger = CustomLoggerAdapter(logger, {'rest_uuid': rest_uuid, 'request_id': request_id})
+        request_id += 1
+
+        req_logger.info("Fetched operation %s.", operation_name)
+        headers = make_successful_response_headers(rest_uuid)
+        return operation_results[str(operation_name)], 200, headers
 
 
 class LongRunningRecognize(Resource):
@@ -196,6 +291,11 @@ class LongRunningRecognize(Resource):
 
     def post(self):
         """Perform asynchronous ASR on POSTed config and audio."""
+        global request_id
+        rest_uuid = str(uuid.uuid4())
+        req_logger = CustomLoggerAdapter(logger, {'rest_uuid': rest_uuid, 'request_id': request_id})
+        request_id += 1
+
         # Translate request -> Mod9 format.
         args = parser.parse_args()
         try:
@@ -204,14 +304,14 @@ class LongRunningRecognize(Resource):
                 module=speech_mod9,
             )
         except Exception as e:
-            logging.exception('Invalid arguments.')
+            req_logger.exception('Invalid arguments.')
             abort(400, error=f"Invalid arguments:\n{e}")
 
         if isinstance(mod9_audio_settings, str):
             try:
                 utils.validate_uri_scheme(mod9_audio_settings, allowed_uri_schemes)
             except utils.Mod9DisabledAudioURISchemeError as e:
-                logging.error(e)
+                req_logger.error(e)
                 abort(403, error=str(e))
 
         # Generate a name for operation and append to list of operations.
@@ -240,11 +340,13 @@ class LongRunningRecognize(Resource):
                 mod9_config_settings,
                 mod9_audio_settings,
                 operation_name,
+                req_logger,
             ),
         )
         request_thread.start()
 
-        return {'name': operation_name}
+        headers = make_successful_response_headers(rest_uuid)
+        return {'name': operation_name}, 200, headers
 
 
 api.add_resource(
@@ -343,9 +445,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # TODO: we should instead adjust the log level of our own logger rather than the root logger.
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=args.log_level.upper())
-
     global allowed_uri_schemes
     allowed_uri_schemes = allowed_uri_schemes.union(
         {
@@ -358,6 +457,8 @@ def main():
     )
     if None in allowed_uri_schemes:
         allowed_uri_schemes.remove(None)
+
+    logging.root.setLevel(args.log_level.upper())
 
     logging.info(
         "Accepting URI schemes: %s.",
@@ -373,8 +474,10 @@ def main():
         utils.test_host_port()
 
     # See https://flask.palletsprojects.com/en/2.0.x/deploying/index.html
-    logging.warning('This REST API is being run directly as a Python Flask server.'
-                    ' For production deployment, use WSGI.')
+    logging.warning(
+        'This REST API is being run directly as a Python Flask server.'
+        ' For production deployment, use WSGI.'
+    )
     app.run(host=args.host, port=args.port, debug=False)
 
 

@@ -455,6 +455,7 @@ def get_transcripts_mod9(options, audio_input):
         producer_thread = PropagatingThread(target=producer, args=(audio_input, sock))
         producer_thread.start()
 
+        yield first_response_line
         for line in sockfile:
             yield json.loads(line)
 

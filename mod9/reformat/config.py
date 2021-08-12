@@ -6,9 +6,12 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.0.0'
+WRAPPER_VERSION = '1.1.0'
 
 # CHANGELOG:
+#   1.1.0 (11 Aug 2021):
+#   - Released in coordination with Engine version 1.1.0 (coincidental version match, not causal).
+#   - REST API now logs to a file, with UUIDs both for itself and the proxied Engine.
 #   1.0.0 (31 Jul 2021):
 #   - This version is not compatible with Engine version < 1.0.0 (due to "asr-model" option).
 #   - Bugfixes to WebSocket interface; also add --skip-engine-check and --allow-*-uri (for REST).
@@ -19,7 +22,7 @@ WRAPPER_VERSION = '1.0.0'
 # Range of compatible Engine versions for current wrappers.
 #  Lower bound is inclusive, upper bound is exclusive.
 #  ``None`` indicates no bound.
-WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.0.0', None)  # tested at 1.1.0 as of 2021 Jul 31.
+WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.0.0', None)  # tested at 1.1.0 as of 2021 Aug 11.
 
 ASR_ENGINE_HOST = os.getenv('ASR_ENGINE_HOST', 'localhost')
 ASR_ENGINE_PORT = int(os.getenv('ASR_ENGINE_PORT', 9900))
