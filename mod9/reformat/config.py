@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.1.0'
+WRAPPER_VERSION = '1.1.1'
 
 # CHANGELOG:
+#   1.1.1 (11 Aug 2021):
+#   - Rebuild correctly (after `rm -rf build/ dist/ *.egg-info`)
 #   1.1.0 (11 Aug 2021):
 #   - Released in coordination with Engine version 1.1.0 (coincidental version match, not causal).
 #   - REST API now logs to a file, with UUIDs both for itself and the proxied Engine.
