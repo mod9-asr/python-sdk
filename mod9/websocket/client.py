@@ -153,6 +153,9 @@ def main():
         )
     except KeyboardInterrupt:
         sys.exit(130)  # Don't show Python traceback.
+    except Exception:
+        print(f"ERROR: Unable to communicate with {args.uri} ... check if server is accessible?")
+        sys.exit(1)
 
 
 if __name__ == '__main__':

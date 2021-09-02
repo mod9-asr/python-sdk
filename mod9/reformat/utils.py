@@ -2,6 +2,7 @@
 Utilities including functions to talk to the Mod9 ASR Engine TCP Server.
 """
 
+import datetime
 import io
 from itertools import _tee as TeeGeneratorType
 import json
@@ -492,14 +493,14 @@ def get_loaded_models_mod9():
             raise Mod9EngineResponseNotCompletedError(
                 f"Got response '{get_models_response}'; must have `.status` field `completed`."
             )
-        if 'models' not in get_models_response:
+        if 'asr_models' not in get_models_response:
             raise Mod9UnexpectedEngineResponseError(
-                f"Got response '{get_models_response}'; must have `.models` field."
+                f"Got response '{get_models_response}'; must have `.asr_models` field."
             )
 
         sockfile.close()
 
-        return get_models_response['models']
+        return get_models_response['asr_models']
 
 
 def find_loaded_models_with_rate(rate):
@@ -590,7 +591,7 @@ def is_compatible_mod9(engine_version_string):
     return is_within_lower_bound and is_within_upper_bound
 
 
-def test_host_port():
+def test_host_port(logger=None):
     """
     Check if Mod9 ASR Engine is online. Loop until get-info command
     provides a ``ready`` response. Log stats.
@@ -602,16 +603,20 @@ def test_host_port():
         None
     """
 
+    if not logger:
+        logger = logging.root
+
     engine_version = get_version_mod9()
     if not is_compatible_mod9(engine_version):
         raise Mod9IncompatibleEngineVersionError(
-            f"Python SDK version {config.WRAPPER_VERSION} compatible range"
-            f" {config.WRAPPER_ENGINE_COMPATIBILITY_RANGE}"
-            f" does not include given Engine of version {engine_version}."
-            ' Please use a compatible SDK-Engine pairing. Exiting.'
+            f"This Python SDK version {config.WRAPPER_VERSION} is not compatible with"
+            f" ASR Engine version {engine_version} (which should be"
+            f" >={config.WRAPPER_ENGINE_COMPATIBILITY_RANGE[0]}"
+            + (').' if config.WRAPPER_ENGINE_COMPATIBILITY_RANGE[1] is None
+               else f" and <{config.WRAPPER_ENGINE_COMPATIBILITY_RANGE[1]}).")
         )
 
-    logging.info(
+    logger.info(
         "Checking for ASR Engine running at %s on port %d ...",
         config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT
     )
@@ -633,7 +638,7 @@ def test_host_port():
 
         # Log and sleep except when receiving a ready response.
         if response.get('state') == 'starting':
-            logging.warning(
+            logger.warning(
                 "The Engine is still starting. Will attempt to connect again in %s seconds...",
                 config.ENGINE_CONNECTION_RETRY_SECONDS,
             )
@@ -644,9 +649,9 @@ def test_host_port():
             )
 
     if response['requests']['limit'] - response['requests']['active'] == 0:
-        logging.warning('The Engine is at its limit, and unable to accept new requests.')
+        logger.warning('The Engine is at its limit, and unable to accept new requests.')
 
-    logging.info("The ASR Engine is ready: %s", response_raw.strip())
+    logger.info("The ASR Engine is ready: %s", response_raw.strip())
     # TODO: also report the name of loaded models, from the get-models-info command?
 
 
@@ -672,3 +677,32 @@ def validate_uri_scheme(uri, allowed_uri_schemes):
                         f" {', '.join(allowed_uri_schemes) if len(allowed_uri_schemes) else None}."
 
         raise Mod9DisabledAudioURISchemeError(error_message)
+
+
+def format_log_time(self, record, datefmt):
+    """
+    Helper function to format logging record times in ISO-8601 format.
+
+    Usage is with a ``logging.Formatter``, e.g.,
+    ```
+    logging.Formatter.formatTime = format_log_time
+    ```
+
+    See:
+    https://stackoverflow.com/a/58777937
+
+    Args:
+        self (logging.Formatter):
+            The log formatter calling this function.
+        record (logging.LogRecord):
+            The log record whose time to format.
+        datefmt (Union[str, None]):
+            Optional string to specify time format; overriden here.
+
+    Returns:
+        str:
+            The time, formatted as 2006-01-02T15:04:05.999-07:00.
+    """
+
+    log_time = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
+    return log_time.astimezone().isoformat(timespec='milliseconds')

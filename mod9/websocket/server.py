@@ -39,6 +39,8 @@ import argparse
 import asyncio
 import json
 import logging
+import uuid
+import sys
 
 import websockets
 
@@ -47,8 +49,34 @@ from mod9.reformat import utils
 
 DEBUG_LOGGING_MESSAGE_INTERVAL = 10000
 
+# Incrementing request ID counter and logger adapter to prepend to each request.
+request_id = 1
 
-async def relay_options(websocket, sock_writer):
+
+class CustomLoggerAdapter(logging.LoggerAdapter):
+    """
+    Add ``request_id`` and ``rest_uuid`` to logs.
+
+    E.g. see:
+    https://docs.python.org/3/howto/logging-cookbook.html#using-loggeradapters-to-impart-contextual-information
+    https://github.com/python/cpython/blob/96cf5a63d2dbadaebf236362b4c7c09c51fda55c/Lib/logging/__init__.py#L1799-L1883
+    """
+    def process(self, msg, kwargs):
+        """Prepend [{ws_uuid}:{request_id}:{level}] to message."""
+        ws_uuid = self.extra.get('ws_uuid', str(uuid.UUID(int=0)))[:8]
+        request_id = self.extra.get('request_id', 0)
+        level = logging.getLevelName(self.extra['level']).lower()
+        return f"[{ws_uuid}:{request_id}:{level}]\t{msg}", kwargs
+
+    def log(self, level, msg, *args, **kwargs):
+        """Override: pass level as element of ``self.extra`` dict."""
+        if self.isEnabledFor(level):
+            self.extra['level'] = level
+            msg, kwargs = self.process(msg, kwargs)
+            self.logger.log(level, msg, *args, **kwargs)
+
+
+async def relay_options(websocket, sock_writer, logger):
     """
     Relay options from client's (first) WebSocket message to Engine TCP socket.
 
@@ -67,7 +95,7 @@ async def relay_options(websocket, sock_writer):
             If client's first message cannot be parsed properly.
     """
     options_message = await websocket.recv()
-    logging.debug("Received options message: %s", options_message)
+    logger.debug("Received options message: %s", options_message)
 
     # Re-serialize WebSocket-specified options as single-line JSON terminated with a newline.
     try:
@@ -93,7 +121,7 @@ async def relay_options(websocket, sock_writer):
     return eof
 
 
-async def receive_messages(websocket):
+async def receive_messages(websocket, logger):
     """
     Receive messages from WebSocket and yield as async bytes generator.
     Stop iteration upon receipt of an empty message.
@@ -115,11 +143,15 @@ async def receive_messages(websocket):
 
         if message:
             if num_messages % DEBUG_LOGGING_MESSAGE_INTERVAL == 0:
-                logging.debug("Received %d messages totaling %d bytes.", num_messages, total_bytes)
+                logger.debug(
+                    "Received %d messages totaling %d bytes.",
+                    num_messages,
+                    total_bytes,
+                )
             yield message
         else:
             # Received empty message, indicating end of messages.
-            logging.debug("Received %d messages totaling %d bytes.", num_messages, total_bytes)
+            logger.debug("Received %d messages totaling %d bytes.", num_messages, total_bytes)
             return
 
 
@@ -169,7 +201,7 @@ async def read_lines_from_socket(sock_reader):
         yield line
 
 
-async def send_messages(async_lines_generator, websocket):
+async def send_messages(async_lines_generator, websocket, logger):
     """
     Send contents of async lines generator to given WebSocket.
     Each line is stripped before being sent as a message.
@@ -183,13 +215,25 @@ async def send_messages(async_lines_generator, websocket):
     Returns:
         None
     """
+    first_response_line = True
     async for line in async_lines_generator:
         message = line.decode().strip().encode('utf-8')
         await websocket.send(message)
-        logging.debug("Sent message: %s", message)
+        logger.debug("Sent message: %s", message)
+
+        if first_response_line:
+            # To pass through Engine UUID in logging.
+            engine_uuid = json.loads(message.decode()).get('uuid')
+            engine_version = json.loads(message.decode()).get('engine', {}).get('version')
+            logger.info(
+                "Engine version %s and UUID %s received from first Engine reply.",
+                'missing' if not engine_version else engine_version,
+                'not' if not engine_uuid else engine_uuid,
+            )
+            first_response_line = False
 
 
-async def send_error(websocket, details):
+async def send_error(websocket, details, logger):
     """
     Send an error message to the WebSocket client, formatted like Engine reply.
 
@@ -209,9 +253,9 @@ async def send_error(websocket, details):
         reply_message = reply_json.encode('utf-8')
         await websocket.send(reply_message)
     except Exception:
-        logging.error('Could not send exception info to client.', exc_info=True)
+        logger.error('Could not send exception info to client.', exc_info=True)
     else:
-        logging.debug("Sent error message: %s", reply_message)
+        logger.debug("Sent error message: %s", reply_message)
 
 
 async def handle_request(websocket, path):
@@ -228,7 +272,17 @@ async def handle_request(websocket, path):
     Returns:
         None
     """
-    logging.info("Handling a request from client %s at path %s", websocket.remote_address[0], path)
+    global request_id
+    ws_uuid = str(uuid.uuid4())
+    logger = CustomLoggerAdapter(logging.root, {'ws_uuid': ws_uuid, 'request_id': request_id})
+    request_id += 1
+
+    logger.info(
+        "Request from client %s at path %s assigned WS UUID %s.",
+        websocket.remote_address[0],
+        path,
+        ws_uuid,
+    )
 
     # Resources that might be created below, and should then be cleaned up later.
     sock_writer, websocket_to_socket = None, None
@@ -240,39 +294,47 @@ async def handle_request(websocket, path):
             config.ASR_ENGINE_PORT,
         )
     except Exception:
-        logging.error('Could not connect to ASR Engine.')
-        await send_error(websocket, 'Could not connect to ASR Engine; contact server operator.')
+        logger.error('Could not connect to ASR Engine.')
+        await send_error(
+            websocket,
+            'Could not connect to ASR Engine; contact server operator.',
+            logger,
+        )
         return
 
     try:
         # Send the request options, and parse the EOF byte sequence.
-        eof = await relay_options(websocket, sock_writer)
+        eof = await relay_options(websocket, sock_writer, logger)
 
         # Receive messages from WebSocket & write chunks (i.e. audio) to Engine socket.
         websocket_to_socket = asyncio.get_event_loop().create_task(
-            write_chunks_to_socket(receive_messages(websocket), sock_writer, eof),
+            write_chunks_to_socket(receive_messages(websocket, logger), sock_writer, eof),
         )
 
         # Read lines (i.e. replies) from Engine socket & send messages to WebSocket.
         socket_to_websocket = asyncio.get_event_loop().create_task(
-            send_messages(read_lines_from_socket(sock_reader), websocket),
+            send_messages(read_lines_from_socket(sock_reader), websocket, logger),
         )
 
         # Wait until the Engine closes the socket.
         # TODO: it might be nice if we inspected and logged the .status of the final Engine message.
         await socket_to_websocket
-        logging.debug('ASR Engine closed TCP connection.')
+        logger.debug('ASR Engine closed TCP connection.')
     except utils.Mod9BadRequestError as e:
-        logging.error('Request failed due to bad request from client.')
-        await send_error(websocket, str(e))
+        logger.error('Request failed due to bad request from client.')
+        await send_error(websocket, str(e), logger)
     except websockets.ConnectionClosed:
-        logging.error('WebSocket closed unexpectedly; perhaps client disconnected?', exc_info=True)
+        logger.error('WebSocket closed unexpectedly; client disconnected?')
         # We cannot send_error to the client in this case, since the WebSocket is closed.
     except Exception:
         # Include the traceback so operators can contact support@mod9.com with helpful information.
-        logging.error('Request failed unexpectedly.', exc_info=True)
+        logger.error('Request failed unexpectedly.', exc_info=True)
         # Do not relay details to the client, as it's likely too server-specific or sensitive.
-        await send_error(websocket, 'Request failed unexpectedly; contact server operator.')
+        await send_error(
+            websocket,
+            'Request failed unexpectedly; contact server operator.',
+            logger,
+        )
     finally:
         # Cancel any audio remaining to be sent, since the Engine can't accept it anymore.
         if websocket_to_socket:
@@ -290,12 +352,12 @@ async def handle_request(websocket, path):
             while True:
                 _ = await websocket.recv()  # Discard received message.
         except websockets.ConnectionClosedOK:
-            logging.debug('WebSocket connection drained successfully.')
+            logger.debug('WebSocket connection drained successfully.')
         except Exception:
-            logging.warning('WebSocket connection was not drained successfully.', exc_info=True)
+            logger.warning('WebSocket connection was not drained successfully.')
 
         await websocket_close_task
-        logging.info('WebSocket connection closed.')
+        logger.info("WebSocket connection closed.")
 
 
 def main():
@@ -344,7 +406,14 @@ def main():
     # TODO: we should instead adjust the log level of our own logger rather than the root logger.
     # TODO: Trace request IDs in logging.
     args.log_level = args.log_level.upper()
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=args.log_level)
+    logging.basicConfig(
+        format="[%(asctime)s] %(message)s",
+        level=args.log_level,
+    )
+
+    # Use local time with ISO-8601 format for time output.
+    logging.Formatter.formatTime = utils.format_log_time
+
     if args.log_level == 'DEBUG':
         # These are overly verbose for our purposes.
         logging.getLogger('asyncio').setLevel(logging.INFO)
@@ -352,13 +421,26 @@ def main():
 
     config.ASR_ENGINE_HOST = args.engine_host
     config.ASR_ENGINE_PORT = args.engine_port
-    if not args.skip_engine_check:
-        utils.test_host_port()
 
-    logging.info("Running a WebSocket server at %s on port %d.", args.host, args.port)
+    logger = CustomLoggerAdapter(logging.root, dict())
+
+    if not args.skip_engine_check:
+        utils.test_host_port(logger=logger)
+
+    logger.info(
+        "Running a WebSocket server (Python SDK version %s) at %s on port %d.",
+        config.WRAPPER_VERSION,
+        args.host,
+        args.port,
+    )
     start_server = websockets.serve(handle_request, host=args.host, port=args.port)
     asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+
+    try:
+        asyncio.get_event_loop().run_forever()
+    except KeyboardInterrupt:
+        logger.warning('Exiting on interrupt signal.')
+        sys.exit(130)  # Don't show Python traceback.
 
 
 if __name__ == '__main__':

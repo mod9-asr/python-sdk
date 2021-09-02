@@ -84,7 +84,9 @@ class GoogleConfigurationSettingsAndMappings:
             'transcript-alternatives',
             'phrase-alternatives',       # only works in speech_mod9 or REST
             'phrase-alternatives-bias',  # only works in speech_mod9 or REST
-            'latency',                   # only works in speech_mod9 or REST
+            'latency',                   # only works in speech_mod9
+            'speed',                     # only works in speech_mod9 or REST
+            'options_json',              # only works in speech_mod9 or REST
             'asr-model',                 # Mod9 internal (always happens under the hood)
             'nlp-model',                 # Mod9 internal (always happens under the hood)
         )
@@ -97,7 +99,9 @@ class GoogleConfigurationSettingsAndMappings:
             'maxAlternatives',
             'maxPhraseAlternatives',     # only works in speech_mod9 or REST
             'enablePhraseConfidence',    # only works in speech_mod9 or REST
-            'latency',                   # only works in speech_mod9 or REST
+            'latency',                   # only works in speech_mod9
+            'speed',                     # only works in speech_mod9 or REST
+            'optionsJson',               # only works in speech_mod9 or REST
             'asrModel',                  # Mod9 internal (always happens under the hood)
             'nlpModel',                  # Mod9 internal (always happens under the hood)
         )
@@ -117,7 +121,7 @@ class GoogleConfigurationSettingsAndMappings:
             'MULAW',
             'ALAW',  # only in Mod9
         }
-        self.google_rate_allowed_values = {8000, 16000}
+        self.google_rate_allowed_values = range(8000, 48001)
         self.google_confidence_allowed_values = {True, False}
         self.google_timestamp_allowed_values = {True, False}
         self.google_punctuation_allowed_values = {True, False}
@@ -125,6 +129,8 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_max_phrase_alternatives_allowed_values = range(10001)
         self.google_phrase_confidence_allowed_values = {True, False}
         self.latency_allowed_values = RealNumericalRangeObject(0.01, 3.0)
+        self.speed_allowed_values = range(1, 10)
+        self.options_json_allowed_values = ObjectContainingEverything()
         self.asr_model_allowed_values = ObjectContainingEverything()
         self.nlp_model_allowed_values = ObjectContainingEverything()
 
@@ -139,6 +145,8 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_max_phrase_alternatives_allowed_values,
             self.google_phrase_confidence_allowed_values,
             self.latency_allowed_values,
+            self.speed_allowed_values,
+            self.options_json_allowed_values,
             self.asr_model_allowed_values,
             self.nlp_model_allowed_values,
         )
@@ -264,6 +272,8 @@ def input_to_mod9(google_input_settings, module):
         except UnboundLocalError:
             pass
 
+    # TODO: enable more languages, rather than only supporting English.
+    # TODO: enable the model parameter, rather than auto-detecting it based on sample rate.
     if 'rate' in mod9_config_settings and 'asr-model' not in mod9_config_settings:
         # Set model associated with user-passed rate, but don't overwrite a user-passed model.
         models = utils.find_loaded_models_with_rate(mod9_config_settings['rate'])
@@ -317,6 +327,10 @@ def google_config_settings_to_mod9(google_config_settings):
         # Use max number of threads available for best speed.
         mod9_config_settings['batch-threads'] = -1
 
+        # This option only applies with speech_mod9.
+        if 'latency' in google_config_settings:
+            raise KeyError("Option key 'latency' only supported for streaming requests.")
+
     if 'languageCode' not in google_config_settings:
         raise KeyError("Config missing required key 'languageCode'/'language_code'.")
 
@@ -348,7 +362,7 @@ def google_config_settings_to_mod9(google_config_settings):
             # Some Mod9 values are equivalent to Google values. Others to be translated later.
             mod9_config_settings[mod9_key] = google_value
         else:
-            raise KeyError(f"Option value '{google_value}' not supported.")
+            raise KeyError(f"Option value '{google_value}' not supported for key '{google_key}'.")
 
     # Do first step of translating Mod9 'encoding' value from Google to Mod9 format + encoding.
     # Format will map to 'wav' or 'raw'. Set placeholder until determined by file header.
@@ -373,6 +387,15 @@ def google_config_settings_to_mod9(google_config_settings):
     # This option only applies with speech_mod9.
     if mod9_config_settings.get('phrase-alternatives'):
         mod9_config_settings['phrase-intervals'] = True
+
+    # These speech_mod9 options override all prior options that might have been set.
+    if 'options_json' in mod9_config_settings:
+        try:
+            extra_options = json.loads(mod9_config_settings['options_json'])
+        except Exception:
+            raise ValueError('Could not parse additional options JSON.')
+        mod9_config_settings.update(extra_options)
+        del mod9_config_settings['options_json']
 
     return mod9_config_settings
 
@@ -415,7 +438,7 @@ def google_audio_settings_to_mod9(google_audio_settings):
     return mod9_audio_settings
 
 
-def result_from_mod9(mod9_results, req_logger=None):
+def result_from_mod9(mod9_results, logger=None):
     """
     Map from Mod9 TCP server-style output to Google-style output.
 
@@ -435,8 +458,8 @@ def result_from_mod9(mod9_results, req_logger=None):
             if mod9_result['status'] == 'failed':
                 raise Mod9EngineFailedStatusError(f"Mod9 server issues 'failed': {mod9_result}.")
             elif mod9_result['status'] != 'completed':
-                if req_logger:
-                    req_logger.error("Unexpected Mod9 server response: %s.", mod9_result)
+                if logger:
+                    logger.error("Unexpected Mod9 server response: %s.", mod9_result)
                 else:
                     logging.error("Unexpected Mod9 server response: %s.", mod9_result)
             else:

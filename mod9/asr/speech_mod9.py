@@ -367,6 +367,13 @@ class RecognitionConfig(proto.Message):
             (in seconds). Low values increase CPU usage; high
             values degrade endpointing. Default is ``0.24``.
             Valid values are between ``0.01`` and ``3.0``.
+        speed (int):
+            Mod9-only attribute. Increasing speed will trade-off accuracy
+            and diversity of recognition alternatives.  Default is ``5``.
+            Valid values are between ``1`` and ``9``.
+        options_json (str):
+            Mod9-only attribute. Additional request options specified as
+            a JSON object. This will override options set by other means.
         audio_channel_count (int):
             Mod9: not available at present.
         enable_separate_recognition_per_channel (bool):
@@ -434,6 +441,8 @@ class RecognitionConfig(proto.Message):
     # Mod9-only option
     max_phrase_alternatives = proto.Field(proto.INT32, number=901)
     latency = proto.Field(proto.FLOAT, number=902)
+    speed = proto.Field(proto.INT32, number=903)
+    options_json = proto.Field(proto.STRING, number=904)
 
 
 class StreamingRecognitionConfig(proto.Message):
