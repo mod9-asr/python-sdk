@@ -6,9 +6,12 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.2.0'
+WRAPPER_VERSION = '1.2.1'
 
 # CHANGELOG:
+#   1.2.1 (11 Nov 2021):
+#   - Bugfix to allow WebSocket server to handle responses up to 1 MiB (instead of 64KiB).
+#   - This setting may be overriden with the --websocket-limit-bytes option.
 #   1.2.0 (30 Aug 2021):
 #   - Improved logging.
 #   - Allow "rate" option to be in the range [8000,48000], as with Google STT.
@@ -55,3 +58,6 @@ if ASR_REST_API_ALLOWED_URI_SCHEMES:
 
 if 'http' in ASR_REST_API_ALLOWED_URI_SCHEMES and 'https' not in ASR_REST_API_ALLOWED_URI_SCHEMES:
     logging.warning('REST API set to allow http:// but NOT https:// audio URIs.')
+
+# Limit on number of bytes allowed per reply line read by WebSocket server.
+WEBSOCKET_LIMIT_BYTES = 1024 * 1024  # 1 MiB

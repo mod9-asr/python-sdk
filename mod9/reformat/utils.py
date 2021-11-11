@@ -56,6 +56,10 @@ class Mod9BadRequestError(Exception):
     pass
 
 
+class Mod9LimitOverrunError(Exception):
+    pass
+
+
 class PropagatingThread(threading.Thread):
     """
     Thread class that propagates any exception that occurred during

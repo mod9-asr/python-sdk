@@ -195,7 +195,15 @@ async def read_lines_from_socket(sock_reader):
         Iterable[bytes]
     """
     while True:
-        line = await sock_reader.readline()
+        try:
+            line = await sock_reader.readline()
+        except ValueError:
+            raise utils.Mod9LimitOverrunError(
+                'Could not read in reply from Engine due to current limit of'
+                f" {config.WEBSOCKET_LIMIT_BYTES} bytes."
+                ' Please retry the request with a larger value passed to the'
+                ' --websocket-limit-bytes command-line argument.'
+            )
         if not line:
             return
         yield line
@@ -290,8 +298,9 @@ async def handle_request(websocket, path):
     try:
         # Connect to the ASR Engine over TCP.
         sock_reader, sock_writer = await asyncio.open_connection(
-            config.ASR_ENGINE_HOST,
-            config.ASR_ENGINE_PORT,
+            host=config.ASR_ENGINE_HOST,
+            port=config.ASR_ENGINE_PORT,
+            limit=config.WEBSOCKET_LIMIT_BYTES,
         )
     except Exception:
         logger.error('Could not connect to ASR Engine.')
@@ -401,6 +410,11 @@ def main():
         help='When starting server, do not wait for ASR Engine.',
         default=False,
     )
+    parser.add_argument(
+        '--websocket-limit-bytes',
+        help='Limit on number of bytes allowed per reply line read from Engine. Default: 1 MiB.',
+        type=int,
+    )
     args = parser.parse_args()
 
     # TODO: we should instead adjust the log level of our own logger rather than the root logger.
@@ -421,6 +435,9 @@ def main():
 
     config.ASR_ENGINE_HOST = args.engine_host
     config.ASR_ENGINE_PORT = args.engine_port
+
+    if args.websocket_limit_bytes:
+        config.WEBSOCKET_LIMIT_BYTES = args.websocket_limit_bytes
 
     logger = CustomLoggerAdapter(logging.root, dict())
 
