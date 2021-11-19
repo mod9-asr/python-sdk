@@ -18,6 +18,8 @@ import proto
 from mod9.asr import common
 from mod9.reformat import config
 
+__version__ = config.WRAPPER_VERSION
+
 # Used to compile protobufs into Python classes.
 __protobuf__ = proto.module(
     package='mod9.asr.speech_mod9',
@@ -436,6 +438,7 @@ class RecognitionConfig(proto.Message):
     language_code = proto.Field(proto.STRING, number=3)
     max_alternatives = proto.Field(proto.INT32, number=4)
     enable_word_time_offsets = proto.Field(proto.BOOL, number=8)
+    model = proto.Field(proto.STRING, number=13)
     enable_word_confidence = proto.Field(proto.BOOL, number=15)
     enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
     # Mod9-only option

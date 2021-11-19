@@ -25,3 +25,4 @@ Input can use either Google-type or Google-like subclasses within the
 module (required to access Mod9-only options) or dict. Output is Google-
 like subclasses defined within the module.
 """
+from mod9.reformat.config import WRAPPER_VERSION as __version__

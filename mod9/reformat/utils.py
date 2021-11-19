@@ -44,6 +44,10 @@ class Mod9EngineResponseNotCompletedError(Mod9UnexpectedEngineResponseError):
     pass
 
 
+class Mod9EngineCouldNotGetModelNameError(Mod9UnexpectedEngineResponseError):
+    pass
+
+
 class Mod9UnexpectedEngineStateError(Exception):
     pass
 
@@ -524,6 +528,124 @@ def find_loaded_models_with_rate(rate):
     except Mod9UnexpectedEngineResponseError:
         return []
     return [model for model in models if model['rate'] == rate]
+
+
+def find_loaded_models_with_language(language_code):
+    """
+    Get all models loaded in Engine with the specified language code prefix.
+
+    Args:
+        language_code (str):
+            Check for loaded Engine models with the prefix of this language code.
+
+    Returns:
+        list[dict[str, Union[bool, dict, int, str]]]:
+            Metadata about models currently loaded in Engine with
+            specified language code prefix (or empty list).
+    """
+
+    try:
+        models = get_loaded_models_mod9()
+    except Mod9UnexpectedEngineResponseError:
+        return []
+    language_code_region = language_code.lower().split(sep='-')
+    possible_models = []
+    possible_model_language_code_regions = []
+    for model in models:
+        model_language_code = model.get('language')
+        if model_language_code:
+            model_language_code_region = model_language_code.lower().split(sep='-')
+            if language_code_region[0] == model_language_code_region[0]:
+                possible_models.append(model)
+                possible_model_language_code_regions.append(model_language_code_region)
+    return possible_models
+
+
+def get_model_languages():
+    """
+    Get the language code of all models loaded in the Engine.
+
+    Args:
+        None.
+
+    Returns:
+        set[str]:
+            Language code of all models loaded in the Engine.
+    """
+
+    try:
+        models = get_loaded_models_mod9()
+    except Mod9UnexpectedEngineResponseError:
+        return set()
+    languages = set()
+    for model in models:
+        model_language_code = model.get('language')
+        if model_language_code:
+            languages.add(model_language_code)
+    return languages
+
+
+def select_best_model_for_language_code(models, language_code, model_type=None):
+    """
+    Get model with language code that best matches given tag.
+
+    Args:
+        models (list[dict[str, Union[bool, dict, int, str]]]):
+            Model metadata from which to select best match.
+        language_code (str):
+            Check for loaded Engine models with the prefix of this language code.
+
+    Returns:
+        dict[str, Union[bool, dict, int, str]]:
+            Model corresponding to the best match (or first model).
+    """
+
+    def use_model_type(models_subset):
+        if model_type:
+            model_type_mod9 = 'phone' if model_type == 'phone_call' else 'video'
+            for model in models_subset:
+                if model_type_mod9 in model['name']:
+                    return model
+        return None
+
+    language_code_region = language_code.lower().split(sep='-')
+    model_language_code_regions = [model['language'].lower().split(sep='-') for model in models]
+    possible_models = []
+    if len(language_code_region) == 1:
+        for i, model_language_code_region in enumerate(model_language_code_regions):
+            if len(model_language_code_region) == 1:
+                possible_models.append(models[i])
+        if len(possible_models) == 1:
+            return possible_models[0]
+        elif len(possible_models) > 1:
+            model_via_type = use_model_type(possible_models)
+            if model_via_type:
+                return model_via_type
+        model_via_type = use_model_type(models)
+        if model_via_type:
+            return model_via_type
+        return models[0]
+
+    general_models = []
+    model_type_models = []
+    for i, model_language_code_region in enumerate(model_language_code_regions):
+        if len(model_language_code_region) == 1:
+            general_models.append(models[i])
+        elif language_code_region[1] == model_language_code_region[1]:
+            model_type_models.append(models[i])
+    if len(model_type_models) == 1:
+        return model_type_models[0]
+    elif len(model_type_models) > 1:
+        model_via_type = use_model_type(model_type_models)
+        if model_via_type:
+            return model_via_type
+    if len(general_models) == 1:
+        return general_models[0]
+    elif len(general_models) > 1:
+        model_via_type = use_model_type(general_models)
+        if model_via_type:
+            return model_via_type
+    return models[0]
 
 
 def get_version_mod9():

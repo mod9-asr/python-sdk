@@ -10,6 +10,7 @@ It can run as a standalone Flask server, but is best deployed via WSGI.
 import argparse
 from collections import OrderedDict
 from datetime import datetime
+import itertools
 import logging
 import logging.config
 import threading
@@ -233,8 +234,9 @@ def place_reformatted_mod9_response_in_operation_results(
         logger.exception('Error communicating with Mod9 ASR Engine.')
         abort(Response(status=500, headers=make_response_headers(logger.extra['rest_uuid'])))
 
-    # First Engine response line contains Engine UUID and version.
+    # Peek at first Engine response line containing Engine UUID and version.
     first_response_line = next(engine_response)
+    engine_response = itertools.chain([first_response_line], engine_response)
     engine_uuid = first_response_line.get('uuid')
     engine_version = first_response_line.get('engine', dict()).get('version')
     logger.info(
@@ -310,8 +312,9 @@ class Recognize(Resource):
             logger.exception('Error communicating with Mod9 ASR Engine.')
             abort(Response(status=500, headers=make_response_headers(logger.extra['rest_uuid'])))
 
-        # First Engine response line contains Engine UUID and version.
+        # Peek at first Engine response line containing Engine UUID and version.
         first_response_line = next(engine_response)
+        engine_response = itertools.chain([first_response_line], engine_response)
         engine_uuid = first_response_line.get('uuid')
         engine_version = first_response_line.get('engine', dict()).get('version')
         logger.info(

@@ -82,6 +82,8 @@ class GoogleConfigurationSettingsAndMappings:
             'word-intervals',
             'transcript-formatted',
             'transcript-alternatives',
+            'language-code',             # transformed to a real Mod9 option
+            'model',                     # transformed to a real Mod9 option
             'phrase-alternatives',       # only works in speech_mod9 or REST
             'phrase-alternatives-bias',  # only works in speech_mod9 or REST
             'latency',                   # only works in speech_mod9
@@ -97,6 +99,8 @@ class GoogleConfigurationSettingsAndMappings:
             'enableWordTimeOffsets',
             'enableAutomaticPunctuation',
             'maxAlternatives',
+            'languageCode',
+            'model',
             'maxPhraseAlternatives',     # only works in speech_mod9 or REST
             'enablePhraseConfidence',    # only works in speech_mod9 or REST
             'latency',                   # only works in speech_mod9
@@ -126,6 +130,8 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_timestamp_allowed_values = {True, False}
         self.google_punctuation_allowed_values = {True, False}
         self.google_max_alternatives_allowed_values = range(10001)
+        self.google_language_code_allowed_values = ObjectContainingEverything()
+        self.google_model_allowed_values = {'command_and_search', 'phone_call', 'video', 'default'}
         self.google_max_phrase_alternatives_allowed_values = range(10001)
         self.google_phrase_confidence_allowed_values = {True, False}
         self.latency_allowed_values = RealNumericalRangeObject(0.01, 3.0)
@@ -142,6 +148,8 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_timestamp_allowed_values,
             self.google_punctuation_allowed_values,
             self.google_max_alternatives_allowed_values,
+            self.google_language_code_allowed_values,
+            self.google_model_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
             self.google_phrase_confidence_allowed_values,
             self.latency_allowed_values,
@@ -272,17 +280,6 @@ def input_to_mod9(google_input_settings, module):
         except UnboundLocalError:
             pass
 
-    # TODO: enable more languages, rather than only supporting English.
-    # TODO: enable the model parameter, rather than auto-detecting it based on sample rate.
-    if 'rate' in mod9_config_settings and 'asr-model' not in mod9_config_settings:
-        # Set model associated with user-passed rate, but don't overwrite a user-passed model.
-        models = utils.find_loaded_models_with_rate(mod9_config_settings['rate'])
-        # Use first English model in list -> first loaded model.
-        for model in models:
-            if model['language'].lower() == 'en-us':
-                mod9_config_settings['asr-model'] = model['name']
-                break
-
     # Mod9 TCP does not accept 'rate' argument for 'wav' format.
     if 'format' not in mod9_config_settings or mod9_config_settings['format'] == 'wav':
         if 'rate' in mod9_config_settings:
@@ -334,16 +331,6 @@ def google_config_settings_to_mod9(google_config_settings):
     if 'languageCode' not in google_config_settings:
         raise KeyError("Config missing required key 'languageCode'/'language_code'.")
 
-    # Ensure 'languageCode' is English, Mod9 Engine's default. Mod9 assumes this input.
-    if 'en-' in google_config_settings['languageCode']:
-        # Mod9 Engine does not accept an input for language code.
-        del google_config_settings['languageCode']
-    else:
-        raise ValueError(
-            f"Language {google_config_settings['languageCode']} not supported. "
-            'Mod9 ASR Engine supports English at this time.'
-        )
-
     # ``to_json()`` populates absent attributes of config with falsy values -> exceptions later.
     google_config_settings = {
         key: value for key, value in google_config_settings.items() if value
@@ -387,6 +374,27 @@ def google_config_settings_to_mod9(google_config_settings):
     # This option only applies with speech_mod9.
     if mod9_config_settings.get('phrase-alternatives'):
         mod9_config_settings['phrase-intervals'] = True
+
+    # Set appropriate model based on user input ``languageCode``.
+    if not google_config_settings.get('languageCode'):
+        google_config_settings['languageCode'] = 'en'
+    models = utils.find_loaded_models_with_language(google_config_settings['languageCode'])
+    if len(models) == 0:
+        raise ValueError(f"Language {google_config_settings['languageCode']} not supported or "
+                         f"loaded. Currently loaded: {sorted(utils.get_model_languages())}")
+    elif len(models) == 1:
+        mod9_config_settings['asr-model'] = models[0]['name']
+    else:
+        model = utils.select_best_model_for_language_code(
+            models,
+            google_config_settings['languageCode'],
+            model_type=google_config_settings.get('model'),
+        )
+        mod9_config_settings['asr-model'] = model['name']
+    if mod9_config_settings.get('language-code'):
+        del mod9_config_settings['language-code']
+    if mod9_config_settings.get('model'):
+        del mod9_config_settings['model']
 
     # These speech_mod9 options override all prior options that might have been set.
     if 'options_json' in mod9_config_settings:
@@ -451,6 +459,9 @@ def result_from_mod9(mod9_results, logger=None):
             Google-style result.
     """
 
+    # Set language below based on first Engine reply. Raise exception if cannot set.
+    language_code = None
+
     # Longer audio comes chopped into segments.
     for mod9_result in mod9_results:
         if mod9_result['status'] != 'processing':
@@ -467,8 +478,18 @@ def result_from_mod9(mod9_results, logger=None):
                 break
 
         if 'result_index' not in mod9_result:
-            # This is likely benign ... let's ignore it.
-            # TODO: should our module have logging?
+            asr_model = mod9_result.get('asr_model')
+            if asr_model:
+                models = utils.get_loaded_models_mod9()
+                for model in models:
+                    if model['name'] == asr_model:
+                        language_code = model['language']
+                        break
+                if not language_code:
+                    raise utils.Mod9EngineCouldNotGetModelNameError(
+                        'Could not set language code '
+                        f"(asr_model field not found in {mod9_result})."
+                    )
             continue
 
         alternatives = []
@@ -516,7 +537,7 @@ def result_from_mod9(mod9_results, logger=None):
                 ('alternatives', alternatives),
                 ('isFinal', mod9_result['final']),
                 # NOTE: this is only returned in v1p1beta1, and it's lowercase for some reason.
-                ('languageCode', 'en-us'),
+                ('languageCode', language_code),
                 ('resultEndTime', "{:.3f}s".format(mod9_result['interval'][1]))
             ]
         )

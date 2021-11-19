@@ -6,9 +6,14 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.2.1'
+WRAPPER_VERSION = '1.3.0'
 
 # CHANGELOG:
+#   1.3.0 (18 Nov 2021):
+#   - Add mod9-asr-elasticsearch-client to demonstrate indexing of phrase alternatives.
+#   - Enable non-English languages to be specified with "languageCode" option.
+#     Unlike Google STT, a region suffix may be omitted, e.g. "en" instead of "en-US".
+#   - Support the "model" option, similarly to Google STT.
 #   1.2.1 (11 Nov 2021):
 #   - Bugfix to allow WebSocket server to handle responses up to 1 MiB (instead of 64KiB).
 #   - This setting may be overriden with the --websocket-limit-bytes option.

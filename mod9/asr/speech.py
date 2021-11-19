@@ -17,6 +17,8 @@ from mod9.asr.common import (
 )
 from mod9.reformat import config
 
+__version__ = config.WRAPPER_VERSION
+
 # Copy Google's types into this namespace.
 # Not all are used/implemented by Mod9 ASR; they may be silently ignored.
 LongRunningRecognizeMetadata = cloud_speech.LongRunningRecognizeMetadata
