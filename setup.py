@@ -9,6 +9,7 @@ with open('README.md') as f_in:
 
 install_requires = [
     'boto3>=1.9.0',
+    'elasticsearch>=7.8.1',
     'flask-restful>=0.3.9',
     'google-auth>=1.22.0',
     'google-cloud-speech>=2.0.0',
@@ -43,7 +44,9 @@ setuptools.setup(
     # Installs executable under user's PATH.
     entry_points={
         'console_scripts': [
+            'mod9-asr-elasticsearch-client = mod9.es.client:main',
             'mod9-asr-rest-api = mod9.rest.server:main',
+            'mod9-asr-switchboard-benchmark = mod9.switchboard.benchmark:main',
             'mod9-asr-websocket-client = mod9.websocket.client:main',
             'mod9-asr-websocket-server = mod9.websocket.server:main',
         ],

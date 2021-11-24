@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.3.0'
+WRAPPER_VERSION = '1.4.0'
 
 # CHANGELOG:
+#   1.4.0 (23 Nov 2021):
+#   - Add mod9-asr-switchboard-benchmark to replicate results at rmtg.co/benchmark.
 #   1.3.0 (18 Nov 2021):
 #   - Add mod9-asr-elasticsearch-client to demonstrate indexing of phrase alternatives.
 #   - Enable non-English languages to be specified with "languageCode" option.
