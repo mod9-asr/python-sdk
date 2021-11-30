@@ -436,7 +436,7 @@ def get_transcripts_mod9(options, audio_input):
         sock.sendall(first_request_line.encode())
 
         # The Engine should respond with an initial 'processing' status message.
-        sockfile = sock.makefile(mode='r')
+        sockfile = sock.makefile(mode='r', encoding='utf-8')
         first_response_line = json.loads(sockfile.readline())
         if first_response_line.get('status') != 'processing':
             raise Mod9EngineFirstResponseNotProcessingError(
@@ -493,7 +493,7 @@ def get_loaded_models_mod9():
         get_model_request = '{"command": "get-models-info"}\n'
         sock.sendall(get_model_request.encode())
 
-        sockfile = sock.makefile(mode='r')
+        sockfile = sock.makefile(mode='r', encoding='utf-8')
 
         response_raw = sockfile.read()  # expected to be single-line JSON
         get_models_response = json.loads(response_raw)
@@ -674,7 +674,7 @@ def get_version_mod9():
 
         sock.sendall('{"command": "get-version"}\n'.encode())
 
-        with sock.makefile(mode='r') as sockfile:
+        with sock.makefile(mode='r', encoding='utf-8') as sockfile:
             response_raw = sockfile.read()  # expected to be single-line JSON
             response = json.loads(response_raw)
 
@@ -758,7 +758,7 @@ def test_host_port(logger=None):
             sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
             sock.sendall('{"command": "get-info"}\n'.encode())
-            with sock.makefile(mode='r') as sockfile:
+            with sock.makefile(mode='r', encoding='utf-8') as sockfile:
                 response_raw = sockfile.read()  # expected to be single-line JSON
                 response = json.loads(response_raw)
 

@@ -14,6 +14,7 @@ This specialized tool can be used to replicate results from rmtg.co/benchmark by
 formatting and scoring output from the Mod9 ASR Engine.
 It reads lines of JSON (i.e. JSONL format) from stdin and prints a report on stdout, saving
 files in a work directory.
+It can also read input formatted as per the Google STT service (i.e. a single JSON object).
 This uses the official NIST SCTK software, which is expected to be installed on the system,
 and also requires certain reference data files which might be downloaded.
 Each of those dependencies is installed in the mod9/asr Docker image for convenience.
@@ -45,7 +46,7 @@ REFERENCE_GLM = 'switchboard-benchmark.glm'
 REFERENCE_STM = 'switchboard-benchmark.stm'
 REFERENCE_URL = 'https://mod9.io'
 
-SCLITE_OPTS = '-F -D -o rsum pralign'
+SCLITE_OPTS = '-F -D'
 
 SCTK_TOOLS = [
     'csrfilt.sh',
@@ -104,9 +105,9 @@ def error(message):
     exit(1)
 
 
-def run(command):
+def run(command, capture_output=True):
     try:
-        return subprocess.run(command, capture_output=True, shell=True, check=True)
+        return subprocess.run(command, capture_output=capture_output, shell=True, check=True)
     except subprocess.SubprocessError:
         error(f"Unable to run '{command}'.")
 
@@ -122,6 +123,42 @@ def install_reference(reference_filename, reference_url):
                     shutil.copyfileobj(resp, glm_file)
         except Exception:
             error(f"Unable to download {reference_filename} from {reference_url}.")
+
+
+def convert_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert Google STT formatted JSON to ASR Engine formatted JSON lines.
+    """
+    with open(json_filename, 'r', encoding='utf-8') as f:
+        response = json.load(f)
+
+    start_time = 0.0
+
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        for result in response['results']:
+            reply = {
+                'final': True,
+                'transcript': result['alternatives'][0]['transcript']
+            }
+
+            reply['alternatives'] = [
+                {'transcript': a['transcript']} for a in result['alternatives']
+            ]
+
+            end_time = float(result['resultEndTime'][:-1])  # strip the "s" suffix
+            reply['interval'] = [start_time, end_time]
+            start_time = end_time
+
+            if 'phrases' in result:
+                reply['phrases'] = [
+                    {
+                        'phrase': p['phrase'],
+                        'interval': [float(p['startTime'][:-1]), float(p['endTime'][:-1])],
+                        'alternatives': p['alternatives'],
+                    } for p in result['phrases']
+                ]
+
+            jsonl_file.write(json.dumps(reply) + '\n')
 
 
 def convert_jsonl_to_ctm(
@@ -158,7 +195,7 @@ def convert_jsonl_to_ctm(
         def write_ctm(key1, key2, begin_time, duration, word, confidence=None):
             # Some ASR systems have a convention of writing initialisms as "a._b._c."
             # But the Switchboard reference treats this as separate words "a", "b", "c".
-            if split_initialisms and '_' in word:
+            if split_initialisms and ('_' in word or (len(word) == 2 and word.endswith('.'))):
                 words = word.split('_')
                 duration /= len(words)
                 for w in words:
@@ -207,11 +244,13 @@ def convert_jsonl_to_ctm(
 
                         write_ctm(key1, key2, begin_time, duration, word, confidence)
                 else:
-                    # TODO: split reply.transcript with uniformly inferred word-level times.
-                    # This may be helpful when processing output from systems that do not support
-                    # word-level timestamps, such as human transcription or some E2E ASR systems.
-                    error('Word-level intervals are expected.')
-
+                    if 'interval' not in reply:
+                        error('Transcript-level intervals are expected.')
+                    begin_time = reply['interval'][0]
+                    duration = reply['interval'][1] - begin_time
+                    words = [w for w in reply['transcript'].split() if w not in exclude_words]
+                    if words:
+                        write_words(key1, key2, begin_time, duration, words)
             else:
                 if alternatives == 'phrase':
                     if 'phrases' not in reply:
@@ -324,7 +363,6 @@ def expand_alt_section(alt_section, max_expansions=None):
     if max_expansions and len(alts) > max_expansions:
         # TODO: figure out how to fix SCTK to handle this without a segfault.
         alts = alts[:max_expansions]
-        print(f"WARNING: only expanding {len(alts)} nested alternatives due to SCTK bug.")
     expanded_alt_sections = [''.join(s) for s in alts]
     return alt_separator_line.join(expanded_alt_sections)
 
@@ -485,7 +523,7 @@ def nist_report(switchboard_speaker_id, show_errors=False):
 
     # This is the standard ASR metric, which has a lot of drawbacks.
     wer = (n_sub + n_del + n_ins) / n_ref * 100
-    print(f"Word Error Rate:   {wer:0.2f}%")
+    print(f"Word Error Rate:   {wer:0.2f}%\n")
 
 
 def main():
@@ -494,6 +532,7 @@ def main():
     parser.add_argument(
         'switchboard_speaker_id',
         metavar='SW_SPEAKER_ID',
+        nargs='?',
         help='Switchboard speaker identifier, including channel, such as "sw_4390_A" for example.',
         choices=SWITCHBOARD_SPEAKER_IDS,
     )
@@ -514,6 +553,7 @@ def main():
         metavar='INT',
         type=int,
         help='Mitigate SCTK bug by limiting nested alternative expansions, e.g. transcript-level.',
+        default=10,
     )
     parser.add_argument(
         '--reference-glm',
@@ -534,19 +574,24 @@ def main():
         default=REFERENCE_URL,
     )
     parser.add_argument(
+        '--score-overall',
+        action='store_true',
+        help='Run NIST sclite tool over all files.',
+    )
+    parser.add_argument(
         '--show-errors',
         action='store_true',
         help='Compare segment-level mis-alignment.',
     )
     parser.add_argument(
-        '--show-overall',
-        action='store_true',
-        help='Report aggregate scores over corpus.',
-    )
-    parser.add_argument(
         '--single-segment-stm',
         action='store_true',
         help='Convert reference to a long segment.',
+    )
+    parser.add_argument(
+        '--sum-overall',
+        action='store_true',
+        help='Report aggregate scores over corpus.',
     )
     parser.add_argument(
         '--workdir',
@@ -559,6 +604,24 @@ def main():
     # This tool will report on stdout, but these saved files might be helpful for debugging.
     os.makedirs(args.workdir, exist_ok=True)
     os.chdir(args.workdir)
+
+    if args.score_overall:
+        run('cat *.ctm.refilt > overall.ctm')
+        run('cat *.stm.refilt > overall.stm')
+        run(f"sclite -h overall.ctm ctm -r overall.stm stm -n overall.nist {SCLITE_OPTS} -o sum",
+            capture_output=False)
+        run("cat overall.nist.sys", capture_output=False)
+        exit(0)
+
+    if args.sum_overall:
+        print('\nOverall corpus:')
+        run("""cat sw_*.nist.raw | grep Sum | awk '
+{Snt+=$4;Wrd+=$5;Corr+=$7;Sub+=$8;Del+=$9;Ins+=$10} END \
+{print" | Sum | "Snt"  "Wrd" | "Corr" "Sub" "Del" "Ins} \
+' > overall.nist.raw""")
+        nist_report('overall')
+        exit(0)
+
     print(f"Results will be saved in the work directory: {args.workdir}")
 
     # Check installed dependencies.
@@ -572,10 +635,23 @@ def main():
     spkid = args.switchboard_speaker_id
     filename_id, channel_id = spkid.rsplit('_', 1)
 
-    print(f"Read Engine replies (JSON lines) from stdin: {spkid}.jsonl", flush=True)
-    with open(spkid+'.jsonl', 'w') as f:
-        for line in sys.stdin:
-            f.write(line)
+    lines = []
+    print('Read Engine replies or Google JSON on stdin: ...', flush=True)
+    for line in sys.stdin:
+        lines.append(line)
+
+    if lines and lines[0] == '{\n':
+        print(f"Save JSON (Google STT formatted) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        print(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    else:
+        print(f"Save JSON lines (Engine replies) from stdin: {spkid}.jsonl")
+        with open(spkid+'.jsonl', 'w') as f:
+            for line in lines:
+                f.write(line)
 
     print(f"Convert to NIST-formatted hypothesis format: {spkid}.ctm")
     convert_jsonl_to_ctm(spkid+'.jsonl', spkid+'.ctm',
@@ -606,18 +682,11 @@ def main():
         stm = f"{spkid}.stm.refilt.1seg"
 
     print(f"Run the NIST SCLITE tool to produce reports: {spkid}.nist.*", flush=True)
-    run(f"sclite -h {spkid}.ctm.refilt ctm -r {stm} stm -n {spkid}.nist {SCLITE_OPTS}")
+    run(f"sclite -h {spkid}.ctm.refilt ctm -r {stm} stm -n {spkid}.nist {SCLITE_OPTS}"
+        " -o pralign rsum")
 
     print(f"\nSpeaker {spkid}:")
     nist_report(spkid, args.show_errors)
-
-    if args.show_overall:
-        print('\nOverall corpus:')
-        run("""cat *.nist.raw | grep Sum | awk '
-{Snt+=$4;Wrd+=$5;Corr+=$7;Sub+=$8;Del+=$9;Ins+=$10} END \
-{print" | Sum | "Snt"  "Wrd" | "Corr" "Sub" "Del" "Ins} \
-' > overall.nist.raw""")
-        nist_report('overall')
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ with open('README.md') as f_in:
     long_description = f_in.read()
 
 install_requires = [
+    'aiofiles>=0.5.0',
     'boto3>=1.9.0',
     'elasticsearch>=7.8.1',
     'flask-restful>=0.3.9',

@@ -64,7 +64,11 @@ app = Flask(__name__)
 #  ``RESTFUL_JSON`` is a config var from ``flask_restful`` that
 #  allows JSON formatting similar to ``json.dumps()``, see docs:
 #  https://flask-restful.readthedocs.io/en/latest/extending.html#:~:text=RESTFUL_JSON
-app.config['RESTFUL_JSON'] = {'indent': 2, 'sort_keys': False}
+app.config['RESTFUL_JSON'] = {
+    'ensure_ascii': False,  # Pass Engine's UTF-8 encoded bytes as-is, not escaped as ASCII.
+    'indent': 2,            # Match Google's formatting.
+    'sort_keys': False,     # Enable use of OrderedDict, to match Google's formatting.
+}
 
 if config.FLASK_ENV is not None:
     app.config['ENV'] = config.FLASK_ENV

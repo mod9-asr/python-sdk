@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.4.0'
+WRAPPER_VERSION = '1.4.1'
 
 # CHANGELOG:
+#   1.4.1 (27 Nov 2021):
+#   - Minor bugfixes.
 #   1.4.0 (23 Nov 2021):
 #   - Add mod9-asr-switchboard-benchmark to replicate results at rmtg.co/benchmark.
 #   1.3.0 (18 Nov 2021):
@@ -46,10 +48,11 @@ ASR_ENGINE_HOST = os.getenv('ASR_ENGINE_HOST', 'localhost')
 ASR_ENGINE_PORT = int(os.getenv('ASR_ENGINE_PORT', 9900))
 
 SOCKET_CONNECTION_TIMEOUT_SECONDS = 10.0
-SOCKET_INACTIVITY_TIMEOUT_SECONDS = 60.0
+SOCKET_INACTIVITY_TIMEOUT_SECONDS = 120.0
 ENGINE_CONNECTION_RETRY_SECONDS = 1.0
 
-MAX_CHUNK_SIZE = 8 * 1024 * 1024  # Used as chunk size for URI producers; limits generators.
+# These should be small enough so that it doesn't trigger the Engine's read timeout (10s default).
+MAX_CHUNK_SIZE = 128 * 1024  # Used as chunk size for URI producers; limits generators.
 GS_CHUNK_SIZE = 262144  # Google requires chunks be multiples of 262144
 
 FLASK_ENV = os.getenv('FLASK_ENV', None)

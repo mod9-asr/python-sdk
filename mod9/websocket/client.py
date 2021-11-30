@@ -24,8 +24,11 @@ sox -dqV1 -twav -r16000 -c1 -b16 - | client.py wss://mod9.io '{"partial":true}'
 
 import argparse
 import asyncio
+import os
 import sys
+import stat
 
+import aiofiles
 import websockets
 
 # This is a fairly small default, set as a lowest common denominator for all use cases.  The ASR
@@ -36,6 +39,9 @@ import websockets
 # As general guidance: this parameter can be much larger for batch processing of pre-recorded audio,
 # or if a real-time streaming application appears to be incurring significant networking overhead.
 AUDIO_MESSAGE_SIZE = 128
+
+# Required for use with aiofiles; hopefully this is fairly portable on *nix systems.
+STDIN_FILENAME = '/dev/stdin'
 
 
 async def from_stdin_to_engine(websocket, message_size=AUDIO_MESSAGE_SIZE):
@@ -52,20 +58,36 @@ async def from_stdin_to_engine(websocket, message_size=AUDIO_MESSAGE_SIZE):
     Returns:
         None
     """
-    # Async read from stdin: https://stackoverflow.com/q/64303607/281536
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+    # https://stackoverflow.com/questions/13442574/how-do-i-determine-if-sys-stdin-is-redirected
+    mode = os.fstat(sys.stdin.fileno()).st_mode
+
+    if stat.S_ISFIFO(mode):
+        # Async read from piped stdin: https://stackoverflow.com/q/64303607/281536
+        # NOTE: this doesn't work with redirected stdin.
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+    elif stat.S_ISREG(mode):
+        # Async read from redirected stdin.
+        # NOTE: this also works for piped stdin, but the STDIN_FILENAME may not be very portable.
+        reader = await aiofiles.open(STDIN_FILENAME, mode='rb')
+    elif sys.stdin.isatty():
+        print('ERROR: pipe or redirect stdin to this tool, rather than direct input at a terminal.')
+        sys.exit(1)
+    else:
+        print('ERROR: unexpected stdin type; pipe or redirect stdin to this tool.')
+        sys.exit(1)
 
     while True:
-        # Read audio bytes from stdin, chunked at the message size.
         audio_chunk = await reader.read(message_size)
-
         if audio_chunk:
-            # Send audio chunk as a WebSocket message of the same size.
             await websocket.send(audio_chunk)
         else:
             break
+
+    # Unlike asyncio.StreamReader(), aiofiles provides a file-like object that shuld be closed.
+    if isinstance(reader, aiofiles.threadpool.binary.AsyncBufferedReader):
+        reader.close()
 
     # Send an empty message to terminate audio data.
     await websocket.send(b'')
