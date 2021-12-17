@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.4.1'
+WRAPPER_VERSION = '1.4.2'
 
 # CHANGELOG:
+#   1.4.2 (16 Dec 2021):
+#   - Enable mod9-asr-websocket-client to request non-recognize commands without audio data.
 #   1.4.1 (27 Nov 2021):
 #   - Minor bugfixes.
 #   1.4.0 (23 Nov 2021):

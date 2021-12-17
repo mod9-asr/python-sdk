@@ -24,6 +24,7 @@ sox -dqV1 -twav -r16000 -c1 -b16 - | client.py wss://mod9.io '{"partial":true}'
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import stat
@@ -71,12 +72,12 @@ async def from_stdin_to_engine(websocket, message_size=AUDIO_MESSAGE_SIZE):
         # Async read from redirected stdin.
         # NOTE: this also works for piped stdin, but the STDIN_FILENAME may not be very portable.
         reader = await aiofiles.open(STDIN_FILENAME, mode='rb')
-    elif sys.stdin.isatty():
-        print('ERROR: pipe or redirect stdin to this tool, rather than direct input at a terminal.')
-        sys.exit(1)
     else:
-        print('ERROR: unexpected stdin type; pipe or redirect stdin to this tool.')
-        sys.exit(1)
+        # Send an empty message to terminate audio data, (i.e. indicate that no audio is sent).
+        # This will be an error for requests specifying format=wav, but not for format=raw.
+        # It may be desirable someday for recognize requests to send empty audio with an audio-uri.
+        await websocket.send(b'')
+        return
 
     while True:
         audio_chunk = await reader.read(message_size)
@@ -85,7 +86,7 @@ async def from_stdin_to_engine(websocket, message_size=AUDIO_MESSAGE_SIZE):
         else:
             break
 
-    # Unlike asyncio.StreamReader(), aiofiles provides a file-like object that shuld be closed.
+    # Unlike asyncio.StreamReader(), aiofiles provides a file-like object that should be closed.
     if isinstance(reader, aiofiles.threadpool.binary.AsyncBufferedReader):
         reader.close()
 
@@ -121,14 +122,22 @@ async def communicate_with_engine(uri, options_json, message_size):
         options_message = options_json.encode('utf-8')
         await websocket.send(options_message)
 
-        # Send audio to Engine in an async task.
-        # NOTE: if the client sends audio for a command that does not expect it, or if the Engine
-        #       closes the connection early (e.g. on error), then it may take 10 seconds for the
-        #       WebSocket connection to be closed by the Engine.
-        # TODO: add logic to this client to await/parse the first Engine reply before proceeding?
-        send_audio = asyncio.get_event_loop().create_task(
-            from_stdin_to_engine(websocket, message_size),
-        )
+        # The client's protocol differs depending on whether it's a recognize request sending audio.
+        try:
+            command = json.loads(options_json).get('command', 'recognize')
+        except Exception:
+            # Proceed with the request, but let the Engine report its own error message.
+            command = 'recognize'
+
+        if command == 'recognize':
+            # Send audio to Engine in an async task.
+            # NOTE: if the client sends audio for a command that does not expect it, or the Engine
+            #       closes the connection early (e.g. on error), then it may take 10 seconds for the
+            #       WebSocket connection to be closed by the Engine.
+            # TODO: add logic to the client to await/parse the first Engine reply before proceeding?
+            send_audio = asyncio.get_event_loop().create_task(
+                from_stdin_to_engine(websocket, message_size),
+            )
 
         # Receive replies from Engine in an async task.
         recv_replies = asyncio.get_event_loop().create_task(
@@ -139,7 +148,8 @@ async def communicate_with_engine(uri, options_json, message_size):
         await recv_replies
 
         # Cancel any audio remaining to be sent, since the Engine can't accept it anymore.
-        send_audio.cancel()
+        if command == 'recognize':
+            send_audio.cancel()
 
 
 def main():
