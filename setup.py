@@ -14,6 +14,7 @@ install_requires = [
     'flask-restful>=0.3.9',
     'google-auth>=1.22.0',
     'google-cloud-speech>=2.0.0',
+    'google-cloud-storage>=1.30.0',
     'google-resumable-media>=1.0.0',
     'packaging>=15.0',
     'proto-plus>=1.4.0',

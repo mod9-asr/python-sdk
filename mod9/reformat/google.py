@@ -75,6 +75,7 @@ class GoogleConfigurationSettingsAndMappings:
         """
 
         # Mod9 and Google input key names for use in following dict's.
+        # NOTE: options-json and intervals-json are exceptional; they are not valid Engine options.
         self.mod9_allowed_keys = (
             'encoding',
             'rate',
@@ -82,15 +83,15 @@ class GoogleConfigurationSettingsAndMappings:
             'word-intervals',
             'transcript-formatted',
             'transcript-alternatives',
-            'language-code',             # transformed to a real Mod9 option
-            'model',                     # transformed to a real Mod9 option
-            'phrase-alternatives',       # only works in speech_mod9 or REST
-            'phrase-alternatives-bias',  # only works in speech_mod9 or REST
-            'latency',                   # only works in speech_mod9
-            'speed',                     # only works in speech_mod9 or REST
-            'options_json',              # only works in speech_mod9 or REST
-            'asr-model',                 # Mod9 internal (always happens under the hood)
-            'nlp-model',                 # Mod9 internal (always happens under the hood)
+            'language-code',          # transformed to a real Mod9 option
+            'model',                  # transformed to a real Mod9 option
+            'phrase-alternatives',    # only works in speech_mod9 or REST
+            'word-alternatives',      # only works in speech_mod9 or REST
+            'latency',                # only works in speech_mod9
+            'speed',                  # only works in speech_mod9 or REST
+            'options-json',           # only works in speech_mod9 or REST
+            'intervals-json',         # only works in speech_mod9 or REST
+            'asr-model',              # only works in speech_mod9 or REST
         )
         self.google_allowed_keys = (
             'encoding',
@@ -101,13 +102,13 @@ class GoogleConfigurationSettingsAndMappings:
             'maxAlternatives',
             'languageCode',
             'model',
-            'maxPhraseAlternatives',     # only works in speech_mod9 or REST
-            'enablePhraseConfidence',    # only works in speech_mod9 or REST
-            'latency',                   # only works in speech_mod9
-            'speed',                     # only works in speech_mod9 or REST
-            'optionsJson',               # only works in speech_mod9 or REST
-            'asrModel',                  # Mod9 internal (always happens under the hood)
-            'nlpModel',                  # Mod9 internal (always happens under the hood)
+            'maxPhraseAlternatives',  # only works in speech_mod9 or REST
+            'maxWordAlternatives',    # only works in speech_mod9 or REST
+            'latency',                # only works in speech_mod9
+            'speed',                  # only works in speech_mod9 or REST
+            'optionsJson',            # only works in speech_mod9 or REST
+            'intervalsJson',          # only works in speech_mod9 or REST
+            'asrModel',               # only works in speech_mod9 or REST
         )
 
         # Map from (Google key) to (Mod9 key).
@@ -129,16 +130,16 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_confidence_allowed_values = {True, False}
         self.google_timestamp_allowed_values = {True, False}
         self.google_punctuation_allowed_values = {True, False}
-        self.google_max_alternatives_allowed_values = range(10001)
+        self.google_max_alternatives_allowed_values = range(1001)
         self.google_language_code_allowed_values = ObjectContainingEverything()
-        self.google_model_allowed_values = {'command_and_search', 'phone_call', 'video', 'default'}
+        self.google_model_allowed_values = {'phone_call', 'video', 'default'}
         self.google_max_phrase_alternatives_allowed_values = range(10001)
-        self.google_phrase_confidence_allowed_values = {True, False}
+        self.google_max_word_alternatives_allowed_values = range(10001)
         self.latency_allowed_values = RealNumericalRangeObject(0.01, 3.0)
         self.speed_allowed_values = range(1, 10)
         self.options_json_allowed_values = ObjectContainingEverything()
+        self.intervals_json_allowed_values = ObjectContainingEverything()
         self.asr_model_allowed_values = ObjectContainingEverything()
-        self.nlp_model_allowed_values = ObjectContainingEverything()
 
         # Group allowed Google values. To be used in following dict.
         self.google_allowed_values = (
@@ -151,12 +152,12 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_language_code_allowed_values,
             self.google_model_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
-            self.google_phrase_confidence_allowed_values,
+            self.google_max_word_alternatives_allowed_values,
             self.latency_allowed_values,
             self.speed_allowed_values,
             self.options_json_allowed_values,
+            self.intervals_json_allowed_values,
             self.asr_model_allowed_values,
-            self.nlp_model_allowed_values,
         )
 
         # Map from (Mod9 key) to (allowed Google values) for given key.
@@ -175,7 +176,7 @@ class GoogleConfigurationSettingsAndMappings:
         }
 
 
-def input_to_mod9(google_input_settings, module):
+def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
     """
     Wrapper method to take Google inputs of various types and return
     Mod9-compatible inputs.
@@ -242,7 +243,10 @@ def input_to_mod9(google_input_settings, module):
         )
 
     # Convert Google-style inputs to Mod9-style inputs.
-    mod9_config_settings = google_config_settings_to_mod9(google_config_settings_dict)
+    mod9_config_settings = google_config_settings_to_mod9(
+        google_config_settings_dict,
+        logger=logger,
+    )
     mod9_audio_settings = google_audio_settings_to_mod9(google_audio_settings_dict)
 
     # None is a placeholder since we need to inspect the audio_settings to determine file format.
@@ -291,7 +295,7 @@ def input_to_mod9(google_input_settings, module):
     return mod9_config_settings, mod9_audio_settings
 
 
-def google_config_settings_to_mod9(google_config_settings):
+def google_config_settings_to_mod9(google_config_settings, logger=logging.getLogger()):
     """
     Map from Google-style key:value inputs to Mod9 ASR TCP server-style
     key:value inputs.
@@ -325,11 +329,18 @@ def google_config_settings_to_mod9(google_config_settings):
         mod9_config_settings['batch-threads'] = -1
 
         # This option only applies with speech_mod9.
-        if 'latency' in google_config_settings:
+        if google_config_settings.get('latency'):
             raise KeyError("Option key 'latency' only supported for streaming requests.")
 
     if 'languageCode' not in google_config_settings:
-        raise KeyError("Config missing required key 'languageCode'/'language_code'.")
+        log_string = 'No languageCode given. Defaulting to first loaded model: %s of language %s.'
+        models = utils.get_loaded_models_mod9()
+        default_model_name = models[0].get('name', 'model')
+        default_model_language = models[0]['language']
+        logger.warning(log_string, default_model_name, default_model_language)
+        google_config_settings['languageCode'] = default_model_language
+        # Preempt setting model below based on ``languageCode``.
+        mod9_config_settings['asr-model'] = default_model_name
 
     # ``to_json()`` populates absent attributes of config with falsy values -> exceptions later.
     google_config_settings = {
@@ -371,39 +382,54 @@ def google_config_settings_to_mod9(google_config_settings):
             n_best_N = 1
         mod9_config_settings['transcript-alternatives'] = n_best_N
 
-    # This option only applies with speech_mod9.
+    # These options only apply with speech_mod9 and REST.
     if mod9_config_settings.get('phrase-alternatives'):
+        # Phrase alternatives always include AM/LM bias (presented as "confidence") and timestamps.
+        mod9_config_settings['phrase-alternatives-bias'] = True
         mod9_config_settings['phrase-intervals'] = True
+    if mod9_config_settings.get('word-alternatives'):
+        # Word alternatives might include confidence and timestamps, if they are enabled for 1-best.
+        mod9_config_settings['word-alternatives-confidence'] = \
+            mod9_config_settings.get('word-confidence', False)
 
-    # Set appropriate model based on user input ``languageCode``.
-    if not google_config_settings.get('languageCode'):
-        google_config_settings['languageCode'] = 'en'
-    models = utils.find_loaded_models_with_language(google_config_settings['languageCode'])
-    if len(models) == 0:
-        raise ValueError(f"Language {google_config_settings['languageCode']} not supported or "
-                         f"loaded. Currently loaded: {sorted(utils.get_model_languages())}")
-    elif len(models) == 1:
-        mod9_config_settings['asr-model'] = models[0]['name']
-    else:
-        model = utils.select_best_model_for_language_code(
-            models,
-            google_config_settings['languageCode'],
-            model_type=google_config_settings.get('model'),
-        )
-        mod9_config_settings['asr-model'] = model['name']
+    if not mod9_config_settings.get('asr-model'):
+        # Set appropriate model based on user input ``languageCode``.
+        models = utils.find_loaded_models_with_language(google_config_settings['languageCode'])
+        if len(models) == 0:
+            raise ValueError(
+                f"Language {google_config_settings['languageCode']} not supported or "
+                f"loaded. Currently loaded: {sorted(utils.get_model_languages())}"
+            )
+        elif len(models) == 1:
+            mod9_config_settings['asr-model'] = models[0]['name']
+        else:
+            model = utils.select_best_model_for_language_code(
+                models,
+                google_config_settings['languageCode'],
+                model_type=google_config_settings.get('model'),
+            )
+            mod9_config_settings['asr-model'] = model['name']
     if mod9_config_settings.get('language-code'):
         del mod9_config_settings['language-code']
     if mod9_config_settings.get('model'):
         del mod9_config_settings['model']
 
-    # These speech_mod9 options override all prior options that might have been set.
-    if 'options_json' in mod9_config_settings:
+    if 'intervals-json' in mod9_config_settings:
         try:
-            extra_options = json.loads(mod9_config_settings['options_json'])
+            mod9_config_settings['batch-intervals'] = \
+                json.loads(mod9_config_settings['intervals-json'])
+        except Exception:
+            raise ValueError('Could not parse intervals JSON (should be an array of arrays).')
+        del mod9_config_settings['intervals-json']
+
+    # These speech_mod9 options override all prior options that might have been set.
+    if 'options-json' in mod9_config_settings:
+        try:
+            extra_options = json.loads(mod9_config_settings['options-json'])
         except Exception:
             raise ValueError('Could not parse additional options JSON.')
         mod9_config_settings.update(extra_options)
-        del mod9_config_settings['options_json']
+        del mod9_config_settings['options-json']
 
     return mod9_config_settings
 
@@ -433,6 +459,7 @@ def google_audio_settings_to_mod9(google_audio_settings):
 
     if 'uri' in google_audio_settings:
         mod9_audio_settings = google_audio_settings['uri']
+        utils.uri_exists(mod9_audio_settings)
     else:
         # Decode google_audio_settings byte string if Base64 encoded; send chunks in generator.
         try:
@@ -446,7 +473,7 @@ def google_audio_settings_to_mod9(google_audio_settings):
     return mod9_audio_settings
 
 
-def result_from_mod9(mod9_results, logger=None):
+def result_from_mod9(mod9_results, logger=logging.getLogger()):
     """
     Map from Mod9 TCP server-style output to Google-style output.
 
@@ -469,10 +496,7 @@ def result_from_mod9(mod9_results, logger=None):
             if mod9_result['status'] == 'failed':
                 raise Mod9EngineFailedStatusError(f"Mod9 server issues 'failed': {mod9_result}.")
             elif mod9_result['status'] != 'completed':
-                if logger:
-                    logger.error("Unexpected Mod9 server response: %s.", mod9_result)
-                else:
-                    logging.error("Unexpected Mod9 server response: %s.", mod9_result)
+                logger.error("Unexpected Mod9 server response: %s.", mod9_result)
             else:
                 # Status 'completed' is final response (with no transcript).
                 break
@@ -550,6 +574,15 @@ def result_from_mod9(mod9_results, logger=None):
                 interval = phrase.pop('interval')
                 phrase['startTime'] = "{:.3f}s".format(interval[0])
                 phrase['endTime'] = "{:.3f}s".format(interval[1])
+
+        if 'words' in mod9_result and len(mod9_result['words']) > 0:
+            if 'alternatives' in mod9_result['words'][0]:
+                google_result['words'] = mod9_result['words']
+                for word in google_result['words']:
+                    if 'interval' in word:
+                        interval = word.pop('interval')
+                        word['startTime'] = "{:.3f}s".format(interval[0])
+                        word['endTime'] = "{:.3f}s".format(interval[1])
 
         yield google_result
 

@@ -14,10 +14,13 @@ import threading
 import time
 from types import GeneratorType
 from urllib.parse import urlparse
+from urllib.parse import quote
 
 import boto3
+from botocore.exceptions import ClientError as AWSClientError
 import google.auth
 import google.auth.transport.requests
+import google.cloud.storage
 import google.resumable_media.requests
 from packaging import version
 
@@ -61,6 +64,10 @@ class Mod9BadRequestError(Exception):
 
 
 class Mod9LimitOverrunError(Exception):
+    pass
+
+
+class Mod9CouldNotAccessFileError(Exception):
     pass
 
 
@@ -114,33 +121,60 @@ def parse_wav_encoding(audio_settings):
     Returns:
         Union[bool, str]:
             False or truthy value, which may be the encoding name.
+        int:
+            Sample rate if WAV header successfully parsed, else 0.
     """
 
     if audio_settings is None:
         return False, 0
     elif isinstance(audio_settings, TeeGeneratorType):
         audio_settings_header = next(audio_settings)
-        if audio_settings_header[:4] == b'RIFF' and audio_settings_header[8:12] == b'WAVE':
-            # Get the encoding type, which is always truthy.
-            encoding_bytes = audio_settings_header[20:22]
-            if encoding_bytes == b'\x01\x00':
-                wav_encoding = 'pcm_s16le'
-            elif encoding_bytes == b'\x06\x00':
-                wav_encoding = 'a-law'
-            elif encoding_bytes == b'\x07\x00':
-                wav_encoding = 'mu-law'
-            else:
-                wav_encoding = True
-            # Get the sample rate.
-            sample_rate = int.from_bytes(audio_settings_header[24:28], byteorder='little')
-            return wav_encoding, sample_rate
-        else:
-            return False, 0
+        return extract_encoding_and_rate_from_wav_header(audio_settings_header)
     elif isinstance(audio_settings, str):
-        # Will fail in the pathological case of a non-WAV file stored with a ``.wav`` suffix.
-        return audio_settings.endswith('.wav'), 0
+        uri_scheme = urlparse(audio_settings).scheme
+        if uri_scheme == 'http' or uri_scheme == 'https':
+            headers = {'Range': 'bytes=0-28'}
+            with requests.get(audio_settings, headers=headers) as r:
+                r.raise_for_status()
+                return extract_encoding_and_rate_from_wav_header(r.content)
+        else:
+            # Will fail in the pathological case of a non-WAV file stored with a ``.wav`` suffix,
+            #  and when a WAV file is stored without a ``.wav`` suffix.
+            return audio_settings.endswith('.wav'), 0
     else:
         raise TypeError('Expected type None or TeeGeneratorType or str.')
+
+
+def extract_encoding_and_rate_from_wav_header(wav_header):
+    """
+    Attempt to extract encoding, sample rate from possible WAV header.
+
+    Args:
+        wav_header (bytes):
+            Possible WAV file header.
+
+    Returns:
+        Union[bool, str]:
+            False or truthy value, which may be the encoding name.
+        int:
+            Sample rate if WAV header successfully parsed, else 0.
+    """
+    if wav_header[:4] == b'RIFF' and wav_header[8:12] == b'WAVE':
+        # Get the encoding type, which is always truthy.
+        encoding_bytes = wav_header[20:22]
+        if encoding_bytes == b'\x01\x00':
+            wav_encoding = 'pcm_s16le'
+        elif encoding_bytes == b'\x06\x00':
+            wav_encoding = 'a-law'
+        elif encoding_bytes == b'\x07\x00':
+            wav_encoding = 'mu-law'
+        else:
+            wav_encoding = True
+        # Get the sample rate.
+        sample_rate = int.from_bytes(wav_header[24:28], byteorder='little')
+        return wav_encoding, sample_rate
+    else:
+        return False, 0
 
 
 def camel_case_to_snake_case(camel_case_string):
@@ -249,6 +283,10 @@ def convert_gs_uri_to_http_url(uri):
     """
 
     bucket, key = get_bucket_key_from_path(uri, 'gs://')
+
+    # https://cloud.google.com/storage/docs/request-endpoints#encoding
+    key = quote(key, safe='')
+
     url = f"https://storage.googleapis.com/download/storage/v1/b/{bucket}" \
           f"/o/{key}?alt=media"
     return url
@@ -832,3 +870,41 @@ def format_log_time(self, record, datefmt):
 
     log_time = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
     return log_time.astimezone().isoformat(timespec='milliseconds')
+
+
+def uri_exists(uri):
+    """
+    Attempt to access remote file at given uri.
+
+    Args:
+        uri (str):
+            URI where remote file resides.
+
+    Returns:
+        bool:
+            Whether the remote file is reachable.
+    """
+
+    parsed_uri = urlparse(uri)
+    try:
+        if parsed_uri.scheme == 'file':
+            file_path = parsed_uri.netloc + parsed_uri.path
+            if not os.path.exists(file_path):
+                raise Mod9CouldNotAccessFileError
+        elif parsed_uri.scheme == 'gs':
+            bucket, key = get_bucket_key_from_path(uri, 'gs://')
+            ro_scope = 'https://www.googleapis.com/auth/devstorage.read_only'
+            credentials, _ = google.auth.default(scopes=(ro_scope,))
+            gsc = google.cloud.storage.Client(credentials=credentials)
+            blob = google.cloud.storage.Blob(bucket=gsc.bucket(bucket), name=key)
+            if not blob.exists(client=gsc):
+                raise Mod9CouldNotAccessFileError
+        elif parsed_uri.scheme == 'http' or parsed_uri.scheme == 'https':
+            with requests.head(uri) as r:
+                r.raise_for_status()
+        elif parsed_uri.scheme == 's3':
+            bucket, key = get_bucket_key_from_path(uri, 's3://')
+            s3c = boto3.client('s3')
+            s3c.head_object(Bucket=bucket, Key=key)
+    except (AWSClientError, requests.HTTPError, Mod9CouldNotAccessFileError) as e:
+        raise Mod9CouldNotAccessFileError(f"Could not access file at {uri}.") from e

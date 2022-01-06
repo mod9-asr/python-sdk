@@ -13,6 +13,7 @@ from datetime import datetime
 import itertools
 import logging
 import logging.config
+from random import randint
 import threading
 import uuid
 
@@ -285,6 +286,7 @@ class Recognize(Resource):
             mod9_config_settings, mod9_audio_settings = reformat.input_to_mod9(
                 args,
                 module=speech_mod9,
+                logger=logger,
             )
         except Exception as e:
             logger.exception('Invalid arguments.')
@@ -385,6 +387,7 @@ class LongRunningRecognize(Resource):
             mod9_config_settings, mod9_audio_settings = reformat.input_to_mod9(
                 args,
                 module=speech_mod9,
+                logger=logger,
             )
         except Exception as e:
             logger.exception('Invalid arguments.')
@@ -410,7 +413,8 @@ class LongRunningRecognize(Resource):
                 )
 
         # Generate a name for operation and append to list of operations.
-        operation_name = str(uuid.uuid4().int)
+        # Similar to Google STT, make this a 19-character string of random integers.
+        operation_name = str(randint(1, 9)) + ''.join(str(randint(0, 9)) for _ in range(18))
         operation_names.append({'name': operation_name})
 
         # Set up initial operation_result.

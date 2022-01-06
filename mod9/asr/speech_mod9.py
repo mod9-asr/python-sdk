@@ -129,6 +129,55 @@ class SpeechRecognitionPhraseAlternative(proto.Message):
     phrase = proto.Field(proto.STRING, number=4)
 
 
+# Mod9-only message
+class SpeechRecognitionWord(proto.Message):
+    """
+    Word alternative hypotheses. Mod9-only message.
+
+    Attributes:
+        word (str):
+            Word text representing the words the user spoke.
+        confidence (float):
+            Confidence score of the word.
+    """
+
+    word = proto.Field(proto.STRING, number=1)
+    confidence = proto.Field(proto.FLOAT, number=2)
+
+
+# Mod9-only message
+class SpeechRecognitionWordAlternative(proto.Message):
+    """
+    Set of word alternatives for a portion of the audio. Mod9-only
+    message.
+
+    Attributes:
+        alternatives (Sequence[SpeechRecognitionWord]):
+            Set of word hypotheses (up to the maximum specified in
+            ``max_word_alternatives``). These word alternatives are
+            ordered in terms of confidence, with the top (first) word
+            alternative being the most probable, as ranked by the
+            recognizer.
+        start_time (duration.Duration):
+            Time offset relative to the beginning of the audio, and
+            corresponding to the start of the spoken word.
+        end_time (duration.Duration):
+            Time offset relative to the beginning of the audio, and
+            corresponding to the end of the spoken word.
+        confidence (float):
+            Confidence score of the most likely word.
+        word (str):
+            Most likely word text representing the words the user
+            spoke.
+    """
+
+    alternatives = proto.RepeatedField(SpeechRecognitionWord, number=1)
+    start_time = proto.Field(duration.Duration, number=2)
+    end_time = proto.Field(duration.Duration, number=3)
+    confidence = proto.Field(proto.FLOAT, number=4)
+    word = proto.Field(proto.STRING, number=5)
+
+
 class SpeechRecognitionResult(proto.Message):
     """
     OVERRIDE: A speech recognition result corresponding to a portion of
@@ -150,6 +199,9 @@ class SpeechRecognitionResult(proto.Message):
         phrases (Sequence[SpeechRecognitionPhraseAlternative]):
             Sequence of phrase alternatives in increasing time order.
             Mod9-only attribute.
+        words (Sequence[SpeechRecognitionWordAlternative]):
+            Sequence of word alternatives in increasing time order.
+            Mod9-only attribute.
         channel_tag (int):
             Mod9: not available at present.
     """
@@ -158,6 +210,8 @@ class SpeechRecognitionResult(proto.Message):
     language_code = proto.Field(proto.STRING, number=5)
     # Mod9-only attribute
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
+    # Mod9-only attribute
+    words = proto.RepeatedField(SpeechRecognitionWordAlternative, number=902)
 
 
 class RecognizeResponse(proto.Message):
@@ -226,6 +280,8 @@ class StreamingRecognitionResult(proto.Message):
     language_code = proto.Field(proto.STRING, number=6)
     # Mod9-only attribute
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
+    # Mod9-only attribute
+    words = proto.RepeatedField(SpeechRecognitionWordAlternative, number=902)
 
 
 class StreamingRecognizeResponse(proto.Message):
@@ -307,8 +363,12 @@ class StreamingRecognizeResponse(proto.Message):
 class RecognitionConfig(proto.Message):
     """
     OVERRIDE: Provides information to the recognizer that specifies how
-    to process the request. Mod9 subclass to support Mod9-only attribute
-    ``max_phrase_alternatives``.
+    to process the request. Mod9 subclass to support Mod9-only attributes:
+    - ``latency``
+    - ``max_phrase_alternatives``
+    - ``max_word_alternatives``
+    - ``options_json``
+    - ``speed``
 
     Attributes:
         encoding (RecognitionConfig.AudioEncoding):
@@ -337,8 +397,8 @@ class RecognitionConfig(proto.Message):
             Specifically, the maximum number of
             ``SpeechRecognitionAlternative`` messages within each
             ``SpeechRecognitionResult``. The server may return fewer
-            than ``max_alternatives``. Valid values are ``0``-``30``. A
-            value of ``0`` or ``1`` will return a maximum of one. If
+            than ``max_alternatives``. Valid values are ``0``-``1000``.
+            A value of ``0`` or ``1`` will return a maximum of one. If
             omitted, will return a maximum of one.
         enable_word_time_offsets (bool):
             If ``true``, the top result includes a list of words and the
@@ -362,7 +422,15 @@ class RecognitionConfig(proto.Message):
             ``SpeechRecognitionPhrase`` messages within each
             ``SpeechRecognitionPhraseAlternative``. The server may
             return fewer than ``max_phrase_alternatives``. Valid values
-            are ``0``-``100``. A value of ``0`` or ``1`` will return a
+            are ``0``-``10000``. A value of ``0`` or ``1`` will return a
+            maximum of one. If omitted, will return a maximum of one.
+        max_word_alternatives (int):
+            Mod9-only attribute. Maximum number of word hypotheses to
+            be returned. Specifically, the maximum number of
+            ``SpeechRecognitionWord`` messages within each
+            ``SpeechRecognitionWordAlternative``. The server may
+            return fewer than ``max_word_alternatives``. Valid values
+            are ``0``-``10000``. A value of ``0`` or ``1`` will return a
             maximum of one. If omitted, will return a maximum of one.
         latency (float):
             Mod9-only attribute. Chunk size for ASR processing
@@ -376,6 +444,13 @@ class RecognitionConfig(proto.Message):
         options_json (str):
             Mod9-only attribute. Additional request options specified as
             a JSON object. This will override options set by other means.
+        asr_model (str):
+            Mod9-only attribute. Set ASR model to use. This will
+            override ``language_code`` setting, but will be overridden by
+            ``options_json``.
+        intervals_json (str):
+            Mod9-only attribute. Specific intervals to be transcribed,
+            specified as a JSON object.
         audio_channel_count (int):
             Mod9: not available at present.
         enable_separate_recognition_per_channel (bool):
@@ -446,6 +521,9 @@ class RecognitionConfig(proto.Message):
     latency = proto.Field(proto.FLOAT, number=902)
     speed = proto.Field(proto.INT32, number=903)
     options_json = proto.Field(proto.STRING, number=904)
+    max_word_alternatives = proto.Field(proto.INT32, number=905)
+    asr_model = proto.Field(proto.STRING, number=906)
+    intervals_json = proto.Field(proto.STRING, number=907)
 
 
 class StreamingRecognitionConfig(proto.Message):

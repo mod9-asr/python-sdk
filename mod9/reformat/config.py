@@ -6,9 +6,28 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.4.2'
+WRAPPER_VERSION = '1.5.0'
 
 # CHANGELOG:
+#   1.5.0 (06 Jan 2022):
+#   - Fixed handling of gs:// URIs in which the blob name requires percent-encoded URLs.
+#   - Make "languageCode" optional, in contrast to Google; default is first Engine model loaded.
+#   - Do not accept "command_and_search" as model type.
+#   - The speech_mod9 module and REST API now extend support for "asrModel".
+#     - This will override Google-compatible "languageCode" and "model", if specified.
+#   - The speech_mod9 module and REST API now extend support for "maxWordAlternatives".
+#   - Only allow "maxAlternatives" up to 1000 transcript-level alternatives.
+#   - Improve determination of WAV files by checking header of HTTP(S) URI files.
+#   - Confirm existence of audio via URI to avoid waiting for timeout if audio does not exist.
+#   - The speech_mod9 module and REST API now extend support for "intervalsJson".
+#   - Remove "enablePhraseConfidence" option from speech_mod9 and REST API; always report biases.
+#   - The REST API now always reports 19-digit operation names.
+#   - Various minor changes to mod9-asr-switchboard-benchmark:
+#     - Default of 0 for --max-expansions, fully-expanded alternatives assuming bugfixed SCTK.
+#     - Improved parsing of Google STT-formatted results, and optimization of refiltered CTM.
+#     - Added --alternatives-max to allow scoring variable depth lists of alternatives.
+#     - Added --verbose option, false by default since the tool was otherwise too verbose.
+#     - When verbose, report statistics about the size, depth, and width of alternatives.
 #   1.4.2 (16 Dec 2021):
 #   - Enable mod9-asr-websocket-client to request non-recognize commands without audio data.
 #   1.4.1 (27 Nov 2021):

@@ -99,6 +99,13 @@ SWITCHBOARD_SPEAKER_IDS = [
 
 WORKDIR = '/tmp/switchboard-benchmark'
 
+VERBOSE = None  # HACK: use this as a global variable for logging ... see below.
+
+
+def info(*args, **kwargs):
+    if VERBOSE:
+        print(*args, **kwargs)
+
 
 def error(message):
     print(f"ERROR: {message}")
@@ -114,9 +121,9 @@ def run(command, capture_output=True):
 
 def install_reference(reference_filename, reference_url):
     if os.path.exists(reference_filename):
-        print(f"Found a previously installed reference file: {reference_filename}")
+        info(f"Found a previously installed reference file: {reference_filename}")
     else:
-        print(f"Did not find {reference_filename}; downloading from {reference_url} ...")
+        info(f"Did not find {reference_filename}; downloading from {reference_url} ...")
         try:
             with urllib.request.urlopen(os.path.join(reference_url, reference_filename)) as resp:
                 with open(reference_filename, 'wb') as glm_file:
@@ -131,7 +138,11 @@ def convert_json_to_jsonl(json_filename, jsonl_filename):
     """
     with open(json_filename, 'r', encoding='utf-8') as f:
         response = json.load(f)
+        if 'response' in response:
+            # When retrieving a LongRunningRecognize "operation", the "response" is nested.
+            response = response['response']
 
+    # Assume the first result starts at time zero; see note below.
     start_time = 0.0
 
     with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
@@ -146,8 +157,31 @@ def convert_json_to_jsonl(json_filename, jsonl_filename):
             ]
 
             end_time = float(result['resultEndTime'][:-1])  # strip the "s" suffix
+
+            if 'words' in result['alternatives'][0]:
+                words = result['alternatives'][0]['words']
+                reply['words'] = [{'word': w['word']} for w in words]
+                if words and 'confidence' in words[0]:
+                    for i, w in enumerate(words):
+                        reply['words'][i]['confidence'] = w['confidence']
+                if words and 'startTime' in words[0]:
+                    for i, w in enumerate(words):
+                        reply['words'][i]['interval'] = [
+                            float(w['startTime'][:-1]), float(w['endTime'][:-1])
+                        ]
+
+                    # HACK: if enableWordTimestamps was true, then we can infer the start/end times
+                    # of the result as start/end times of first/last words in the first alternative.
+                    start_time = float(words[0]['startTime'][:-1])
+                    end_time = float(words[-1]['endTime'][:-1])
+
+            if 'resultStartTime' in result:
+                # This is not officially part of the Google STT REST API response format, but is
+                # provided in Mod9's implementation as a compatible superset of functionality.
+                # See the note below regarding the implications for NIST SCTK scoring tools.
+                start_time = float(result['resultStartTime'][:-1])
+
             reply['interval'] = [start_time, end_time]
-            start_time = end_time
 
             if 'phrases' in result:
                 reply['phrases'] = [
@@ -158,13 +192,33 @@ def convert_json_to_jsonl(json_filename, jsonl_filename):
                     } for p in result['phrases']
                 ]
 
+            # NOTE: Google does not provide word-level alternatives, but Mod9's extension does.
+            if 'words' in result:
+                reply['words'] = [
+                    {
+                        'word': ['word'],
+                        'interval': [float(w['startTime'][:-1]), float(w['endTime'][:-1])],
+                        'alternatives': w['alternatives'],
+                    } for w in result['words']
+                ]
+
             jsonl_file.write(json.dumps(reply) + '\n')
+
+            # Assume the next result's start time is the end time of this result.
+            # Google's format does not provide a start time for each result (i.e. utterance).
+            # Using the previous result's end time is an unfortunate workaround for the purpose
+            # of producing a CTM, particularly if word-level timestamps are not available and are
+            # then inferred as uniformly distributed over the utterance-level interval. This is
+            # especially problematic for dual-channel telephony in which there are long stretches
+            # of silence between speaker turns, during which words are mistimed.
+            start_time = end_time
 
 
 def convert_jsonl_to_ctm(
         jsonl_filename, ctm_filename,
         key1, key2,
         alternatives=None,
+        alternatives_max=None,
         exclude_words=[],
         split_initialisms=True,
 ):
@@ -180,7 +234,8 @@ def convert_jsonl_to_ctm(
     represent alternative hypotheses. This somewhat lesser-known feature of
     the NIST SCTK software is unfortunately a bit buggy, though, and will
     require further post-processing to be handled correctly after filtering
-    with the csrfilt.sh tool.
+    with the csrfilt.sh tool. If the alternatives_max argument is specified,
+    this will limit the number of alternatives considered.
 
     The list of exclude_words is used as a simple filter to remove words in
     ASR output that is not well matched to the reference conventions. For
@@ -220,7 +275,7 @@ def convert_jsonl_to_ctm(
         for line in jsonl_file:
             reply = json.loads(line)
             if not reply.get('final'):
-                # Skip replies that do no represent a finalized transcript result.
+                # Skip replies that do not represent a finalized transcript result.
                 continue
             if alternatives is None:
                 if 'words' in reply:
@@ -263,7 +318,7 @@ def convert_jsonl_to_ctm(
 
                         if 'alternatives' not in phrase_obj:
                             error('Phrase-level alternatives are expected.')
-                        alts = phrase_obj['alternatives']
+                        alts = phrase_obj['alternatives'][:alternatives_max]
 
                         for alt in alts:
                             words = []
@@ -291,7 +346,7 @@ def convert_jsonl_to_ctm(
 
                     if 'alternatives' not in reply:
                         error('Transcript-level alternatives are expected.')
-                    alts = reply['alternatives']
+                    alts = reply['alternatives'][:alternatives_max]
 
                     for alt in alts:
                         words = []
@@ -322,7 +377,7 @@ def convert_jsonl_to_ctm(
 
                         if 'alternatives' not in word_obj:
                             error('Word-level alternatives are expected.')
-                        alts = word_obj['alternatives']
+                        alts = word_obj['alternatives'][:alternatives_max]
 
                         for alt in alts:
                             if alt['word'] == '' or alt['word'] in exclude_words:
@@ -361,10 +416,28 @@ def expand_alt_section(alt_section, max_expansions=None):
             spans[-1][-1] += line + '\n'
     alts = list(itertools.product(*spans))
     if max_expansions and len(alts) > max_expansions:
-        # TODO: figure out how to fix SCTK to handle this without a segfault.
         alts = alts[:max_expansions]
     expanded_alt_sections = [''.join(s) for s in alts]
     return alt_separator_line.join(expanded_alt_sections)
+
+
+def unique_alt_sections(alt_sections):
+    """Optimize downstream processing by removing duplicated alt sections."""
+    uniq_alt_sections = set()
+    for alt_section in alt_sections:
+        curr_alt_section = ''
+        for line in alt_section.strip().split('\n'):
+            key1, key2, begin_time, duration, word = line.split(None, 4)
+            if word == '<ALT>':
+                # This was an expanded alt section.
+                uniq_alt_sections.add(curr_alt_section)
+                curr_alt_section = ''
+            else:
+                curr_alt_section += line+'\n'
+        uniq_alt_sections.add(curr_alt_section)
+
+    # Order shouldn't matter, but let's keep it deterministic.
+    return sorted(uniq_alt_sections)
 
 
 def refilter_ctm(ctm_in_filename, ctm_out_filename, max_expansions=None):
@@ -431,6 +504,7 @@ def refilter_ctm(ctm_in_filename, ctm_out_filename, max_expansions=None):
                     in_alt = False
                     ctm_out_file.write(alt_begin_line)
                     alt_sections = [expand_alt_section(a, max_expansions) for a in alt_sections]
+                    alt_sections = unique_alt_sections(alt_sections)
                     ctm_out_file.write(alt_separator_line.join(alt_sections))
                     ctm_out_file.write(alt_end_line)
                 else:
@@ -480,8 +554,8 @@ def convert_stm_1seg(old_stm_filename, new_stm_filename):
 
 def nist_report(switchboard_speaker_id, show_errors=False):
     """
-    Read the .pra and .raw files produced by the NIST SCTK sclite tool.
-    Produce a less verbose and somewhat more informative report.
+    Read the .ctm, .pra, and .raw files produced by the NIST SCTK sclite tool.
+    Produce a less verbose and somewhat more informative report than SCTK would.
     """
     if show_errors:
         errors = []
@@ -507,6 +581,38 @@ def nist_report(switchboard_speaker_id, show_errors=False):
             print(hyp_line, end='')
         print()
 
+    # Report the size of the CTM file, compressed.
+    run(f"gzip -c {switchboard_speaker_id}.ctm > {switchboard_speaker_id}.ctm.gz")
+    ctm_gz_kb = os.path.getsize(f"{switchboard_speaker_id}.ctm.gz") // 1000
+    info(f"Size of *.ctm.gz:  {ctm_gz_kb} KB")
+
+    # Report some statistics about the distribution of alternatives.
+    depths = []
+    widths = []
+    curr_depth = 0
+    curr_width = 0
+    for line in open(f"{switchboard_speaker_id}.ctm"):
+        if '<ALT_BEGIN>' in line:
+            curr_depth += 1
+        elif '<ALT>' in line:
+            curr_depth += 1
+            widths.append(curr_width)
+            curr_width = 0
+        elif '<ALT_END>' in line:
+            depths.append(curr_depth)
+            widths.append(curr_width)
+            curr_depth = curr_width = 0
+        else:
+            curr_width += 1
+    if depths and widths:
+        N_max = max(depths)   # When requesting N-best, in practice the depth might be less than N.
+        N_med = sorted(depths)[len(depths)//2]  # This is more informative than the mean.
+        S = len(depths)       # Number of spans/segments.
+        W_avg = sum(widths) / len(widths)  # This relates to the average-case performance.
+        W_max = max(widths)   # This relates to the worst-case performance, e.g. for sclite scoring.
+        info('Alternatives:      '
+             f"N_max={N_max} N_med={N_med} S={S} W_avg={W_avg:0.1f} W_max={W_max}")
+
     sum_line = run(f"grep Sum {switchboard_speaker_id}.nist.raw").stdout.decode()
     fields = sum_line.strip().split()
     n_ref = int(fields[4])
@@ -514,19 +620,27 @@ def nist_report(switchboard_speaker_id, show_errors=False):
     n_sub = int(fields[7])
     n_del = int(fields[8])
     n_ins = int(fields[9])
-    print(f"Sum (#C #S #D #I): {n_cor} {n_sub} {n_del} {n_ins}")
+    info(f"Sum (#C #S #D #I): {n_cor} {n_sub} {n_del} {n_ins}")
 
     # These are not standard metrics, but can be rather enlightening.
     precision = n_cor / (n_cor + n_sub + n_ins)
     recall = n_cor / (n_cor + n_sub + n_del)
-    print(f"Precision/Recall:  {precision:0.3f} / {recall:0.3f}")
+    info(f"Precision/Recall:  {precision:0.3f} / {recall:0.3f}")
 
     # This is the standard ASR metric, which has a lot of drawbacks.
     wer = (n_sub + n_del + n_ins) / n_ref * 100
-    print(f"Word Error Rate:   {wer:0.2f}%\n")
+    print(f"{f'[{switchboard_speaker_id}]':<11} WER:  {f'{wer:.2f}':>6}%", flush=True)
 
 
 def main():
+    try:
+        main_helper()
+        return 0
+    except KeyboardInterrupt:
+        return 130
+
+
+def main_helper():
     parser = argparse.ArgumentParser(description=DESCRIPTION,
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
@@ -543,6 +657,12 @@ def main():
         choices=ALTERNATIVES_LEVELS,
     )
     parser.add_argument(
+        '--alternatives-n',
+        metavar='INT',
+        type=int,
+        help='Limit the number of alternatives (i.e. N-best) to be considered.',
+    )
+    parser.add_argument(
         '--exclude-words',
         metavar='LIST',
         default=','.join(EXCLUDE_WORDS),
@@ -553,7 +673,7 @@ def main():
         metavar='INT',
         type=int,
         help='Mitigate SCTK bug by limiting nested alternative expansions, e.g. transcript-level.',
-        default=10,
+        default=0,
     )
     parser.add_argument(
         '--reference-glm',
@@ -594,6 +714,11 @@ def main():
         help='Report aggregate scores over corpus.',
     )
     parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Print more verbose information.',
+    )
+    parser.add_argument(
         '--workdir',
         metavar='DIRECTORY',
         help='Where files will be saved for caching or debugging.',
@@ -601,28 +726,33 @@ def main():
     )
     args = parser.parse_args()
 
+    global VERBOSE
+    VERBOSE = args.verbose
+
     # This tool will report on stdout, but these saved files might be helpful for debugging.
     os.makedirs(args.workdir, exist_ok=True)
     os.chdir(args.workdir)
 
     if args.score_overall:
-        run('cat *.ctm.refilt > overall.ctm')
-        run('cat *.stm.refilt > overall.stm')
-        run(f"sclite -h overall.ctm ctm -r overall.stm stm -n overall.nist {SCLITE_OPTS} -o sum",
+        run('cat *.ctm.refilt > overall.refilt.ctm')
+        run('cat *.stm.refilt > overall.refilt.stm')
+        run('sclite -h overall.refilt.ctm ctm -r overall.refilt.stm stm -n overall.nist '
+            f"{SCLITE_OPTS} -o sum",
             capture_output=False)
         run("cat overall.nist.sys", capture_output=False)
         exit(0)
-
-    if args.sum_overall:
-        print('\nOverall corpus:')
+    elif args.sum_overall:
         run("""cat sw_*.nist.raw | grep Sum | awk '
 {Snt+=$4;Wrd+=$5;Corr+=$7;Sub+=$8;Del+=$9;Ins+=$10} END \
 {print" | Sum | "Snt"  "Wrd" | "Corr" "Sub" "Del" "Ins} \
 ' > overall.nist.raw""")
+        run('cat *.ctm > overall.ctm')
         nist_report('overall')
         exit(0)
+    elif not args.switchboard_speaker_id:
+        error('Missing required arugment for Switchboard speaker ID.')
 
-    print(f"Results will be saved in the work directory: {args.workdir}")
+    info(f"Results will be saved in the work directory: {args.workdir}")
 
     # Check installed dependencies.
     install_reference(args.reference_glm, args.reference_url)
@@ -636,56 +766,56 @@ def main():
     filename_id, channel_id = spkid.rsplit('_', 1)
 
     lines = []
-    print('Read Engine replies or Google JSON on stdin: ...', flush=True)
+    info('Read Engine replies or Google JSON on stdin: ...', flush=True)
     for line in sys.stdin:
         lines.append(line)
 
     if lines and lines[0] == '{\n':
-        print(f"Save JSON (Google STT formatted) from stdin: {spkid}.json")
+        info(f"Save JSON (Google STT formatted) from stdin: {spkid}.json")
         with open(spkid+'.json', 'w') as f:
             for line in lines:
                 f.write(line)
-        print(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
         convert_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
     else:
-        print(f"Save JSON lines (Engine replies) from stdin: {spkid}.jsonl")
+        info(f"Save JSON lines (Engine replies) from stdin: {spkid}.jsonl")
         with open(spkid+'.jsonl', 'w') as f:
             for line in lines:
                 f.write(line)
 
-    print(f"Convert to NIST-formatted hypothesis format: {spkid}.ctm")
+    info(f"Convert to NIST-formatted hypothesis format: {spkid}.ctm")
     convert_jsonl_to_ctm(spkid+'.jsonl', spkid+'.ctm',
                          filename_id, channel_id,
                          alternatives=args.alternatives,
+                         alternatives_max=args.alternatives_n,
                          exclude_words=args.exclude_words.split(','))
 
-    print(f"Apply global mappings to make filtered file: {spkid}.ctm.filt")
+    info(f"Apply global mappings to make filtered file: {spkid}.ctm.filt")
     run(f"csrfilt.sh -i ctm -t hyp -dh {args.reference_glm} < {spkid}.ctm > {spkid}.ctm.filt")
 
-    print(f"Fix SCTK bug (nested alternative expansion): {spkid}.ctm.refilt")
+    info(f"Fix SCTK bug (nested alternative expansion): {spkid}.ctm.refilt")
     refilter_ctm(spkid+'.ctm.filt', spkid+'.ctm.refilt', args.max_expansions)
 
-    print(f"Extract reference transcription for speaker: {spkid}.stm")
+    info(f"Extract reference transcription for speaker: {spkid}.stm")
     run(f"grep '^{filename_id} {channel_id} {spkid}' < {args.reference_stm} > {spkid}.stm")
 
-    print(f"Apply global mappings to make filtered file: {spkid}.stm.filt")
+    info(f"Apply global mappings to make filtered file: {spkid}.stm.filt")
     run(f"csrfilt.sh -i stm -t ref -dh {args.reference_glm} < {spkid}.stm > {spkid}.stm.filt")
 
     # TODO: report this to Jon Fiscus?
-    print(f"Fix SCTK bug (optional delete alternatives): {spkid}.stm.refilt")
+    info(f"Fix SCTK bug (optional delete alternatives): {spkid}.stm.refilt")
     run('sed "s,(/),/,g; s,({,{(,g; s,}),)},g"' + f" < {spkid}.stm.filt > {spkid}.stm.refilt")
 
     stm = f"{spkid}.stm.refilt"
     if args.single_segment_stm:
-        print(f"Convert the reference into one long segment: {spkid}.stm.refilt.1seg")
+        info(f"Convert the reference into one long segment: {spkid}.stm.refilt.1seg")
         convert_stm_1seg(stm, f"{spkid}.stm.refilt.1seg")
         stm = f"{spkid}.stm.refilt.1seg"
 
-    print(f"Run the NIST SCLITE tool to produce reports: {spkid}.nist.*", flush=True)
+    info(f"Run the NIST SCLITE tool to produce reports: {spkid}.nist.*", flush=True)
     run(f"sclite -h {spkid}.ctm.refilt ctm -r {stm} stm -n {spkid}.nist {SCLITE_OPTS}"
         " -o pralign rsum")
 
-    print(f"\nSpeaker {spkid}:")
     nist_report(spkid, args.show_errors)
 
 
