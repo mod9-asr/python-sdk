@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.5.0'
+WRAPPER_VERSION = '1.5.1'
 
 # CHANGELOG:
+#   1.5.1 (06 Jan 2022):
+#   - Minor fix to mod9-asr-switchboard-benchmark.
 #   1.5.0 (06 Jan 2022):
 #   - Fixed handling of gs:// URIs in which the blob name requires percent-encoded URLs.
 #   - Make "languageCode" optional, in contrast to Google; default is first Engine model loaded.

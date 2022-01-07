@@ -196,7 +196,7 @@ def convert_json_to_jsonl(json_filename, jsonl_filename):
             if 'words' in result:
                 reply['words'] = [
                     {
-                        'word': ['word'],
+                        'word': w['word'],
                         'interval': [float(w['startTime'][:-1]), float(w['endTime'][:-1])],
                         'alternatives': w['alternatives'],
                     } for w in result['words']
@@ -786,7 +786,7 @@ def main_helper():
     info(f"Convert to NIST-formatted hypothesis format: {spkid}.ctm")
     convert_jsonl_to_ctm(spkid+'.jsonl', spkid+'.ctm',
                          filename_id, channel_id,
-                         alternatives=args.alternatives,
+                         alternatives=args.alternatives if args.alternatives_n != 0 else None,
                          alternatives_max=args.alternatives_n,
                          exclude_words=args.exclude_words.split(','))
 
