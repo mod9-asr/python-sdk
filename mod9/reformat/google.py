@@ -332,7 +332,7 @@ def google_config_settings_to_mod9(google_config_settings, logger=logging.getLog
         if google_config_settings.get('latency'):
             raise KeyError("Option key 'latency' only supported for streaming requests.")
 
-    if 'languageCode' not in google_config_settings:
+    if 'languageCode' not in google_config_settings and 'asrModel' not in google_config_settings:
         log_string = 'No languageCode given. Defaulting to first loaded model: %s of language %s.'
         models = utils.get_loaded_models_mod9()
         default_model_name = models[0].get('name', 'model')
@@ -489,6 +489,9 @@ def result_from_mod9(mod9_results, logger=logging.getLogger()):
     # Set language below based on first Engine reply. Raise exception if cannot set.
     language_code = None
 
+    # In speech_mod9, results should indicate which ASR model was used.
+    asr_model = None
+
     # Longer audio comes chopped into segments.
     for mod9_result in mod9_results:
         if mod9_result['status'] != 'processing':
@@ -502,8 +505,9 @@ def result_from_mod9(mod9_results, logger=logging.getLogger()):
                 break
 
         if 'result_index' not in mod9_result:
-            asr_model = mod9_result.get('asr_model')
-            if asr_model:
+            if mod9_result.get('asr_model'):
+                # This is expected to be the first reply.
+                asr_model = mod9_result['asr_model']
                 models = utils.get_loaded_models_mod9()
                 for model in models:
                     if model['name'] == asr_model:
@@ -562,7 +566,9 @@ def result_from_mod9(mod9_results, logger=logging.getLogger()):
                 ('isFinal', mod9_result['final']),
                 # NOTE: this is only returned in v1p1beta1, and it's lowercase for some reason.
                 ('languageCode', language_code),
-                ('resultEndTime', "{:.3f}s".format(mod9_result['interval'][1]))
+                ('resultEndTime', "{:.3f}s".format(mod9_result['interval'][1])),
+                # NOTE: this will be retained only in speech_mod9.
+                ('asrModel', asr_model),
             ]
         )
         if not mod9_result['final']:
@@ -625,24 +631,35 @@ def google_type_result_from_dict(
     Args:
         google_result_dicts (Iterable[dict]):
             Google-style results.
-        google_result_type (Union[module.RecognizeResponse, module.StreamingRecognizeResponse]):
+        google_result_type (
+            Union[
+                module.SpeechRecognitionResult,
+                module.StreamingRecognitionResult,
+            ]
+        ):
             Google-like-type to return.
         module (module):
             Module to read Google-like-types from, in case of
             subclassing.
 
     Yields:
-        Union[module.RecognizeResponse, module.StreamingRecognizeResponse]:
+        Union[
+            module.SpeechRecognitionResult,
+            module.StreamingRecognitionResult,
+        ]:
             Google-like-type result.
     """
 
     for google_result_dict in google_result_dicts:
+        # ``from_json()`` complains if attributes that do not exist in a protobuf are passed.
         if google_result_type == module.SpeechRecognitionResult:
-            # ``from_json()`` complains if attributes that do not exist in a protobuf are passed.
             if 'isFinal' in google_result_dict:
                 google_result_dict.pop('isFinal')
             if 'resultEndTime' in google_result_dict:
                 google_result_dict.pop('resultEndTime')
+        if module.__name__ != 'mod9.asr.speech_mod9':
+            google_result_dict.pop('asrModel')
+
         # Internal camelCase keys are converted to snake_case by from_json().
         #  See docstring in GoogleConfigurationSettingsAndMappings for more info.
         yield google_result_type.from_json(json.dumps(google_result_dict))

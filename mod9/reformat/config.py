@@ -6,9 +6,17 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.5.1'
+WRAPPER_VERSION = '1.6.0'
 
 # CHANGELOG:
+#   1.6.0 (10 Jan 2022):
+#   - Add "asrModel" to results using speech_mod9 and REST API.
+#   - Minor fixes to mod9-asr-switchboard-benchmark and new features:
+#     - Enable scoring of 1-best results in Amazon Transcribe formatted JSON.
+#     - Set --optional-backchannels to make %BCACK and %BCNACK optionally deletable in the STM.
+#     - Set --omit-backchannels to remove from the CTM, since it won't help if optionally deletable.
+#     - Set --omit-hesitations to remove %HESITATION from the CTM, since it's optionally deletable.
+#     - Change --exclude-words to --omit-words, now defaulting to non-speech w/o hesitations.
 #   1.5.1 (06 Jan 2022):
 #   - Minor fix to mod9-asr-switchboard-benchmark.
 #   1.5.0 (06 Jan 2022):

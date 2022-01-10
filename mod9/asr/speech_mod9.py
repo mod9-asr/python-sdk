@@ -181,7 +181,7 @@ class SpeechRecognitionWordAlternative(proto.Message):
 class SpeechRecognitionResult(proto.Message):
     """
     OVERRIDE: A speech recognition result corresponding to a portion of
-    the audio. Mod9 subclass with Mod9-only attribute ``phrases``.
+    the audio. This is a Mod9 subclass with some Mod9-only attributes.
 
     Attributes:
         alternatives (Sequence[SpeechRecognitionAlternative]):
@@ -202,16 +202,20 @@ class SpeechRecognitionResult(proto.Message):
         words (Sequence[SpeechRecognitionWordAlternative]):
             Sequence of word alternatives in increasing time order.
             Mod9-only attribute.
+        asr_model (str):
+            Indicate which ASR model is being used.
+            Mod9-only attribute.
         channel_tag (int):
             Mod9: not available at present.
     """
 
     alternatives = proto.RepeatedField(SpeechRecognitionAlternative, number=1)
     language_code = proto.Field(proto.STRING, number=5)
-    # Mod9-only attribute
+
+    # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
-    # Mod9-only attribute
     words = proto.RepeatedField(SpeechRecognitionWordAlternative, number=902)
+    asr_model = proto.Field(proto.STRING, number=903)
 
 
 class RecognizeResponse(proto.Message):
@@ -233,8 +237,8 @@ class RecognizeResponse(proto.Message):
 class StreamingRecognitionResult(proto.Message):
     """
     OVERRIDE: A streaming speech recognition result corresponding to a
-    portion of the audio that is currently being processed. Mod9
-    subclass with Mod9-only attribute ``phrases``.
+    portion of audio that is currently being processed.
+    This is a Mod9 subclass with some Mod9-only attributes.
 
     Attributes:
         alternatives (Sequence[SpeechRecognitionAlternative]):
@@ -269,6 +273,12 @@ class StreamingRecognitionResult(proto.Message):
         phrases (Sequence[SpeechRecognitionPhraseAlternative]):
             Sequence of phrase alternatives in increasing time order.
             Mod9-only attribute.
+        words (Sequence[SpeechRecognitionWordAlternative]):
+            Sequence of word alternatives in increasing time order.
+            Mod9-only attribute.
+        asr_model (str):
+            Indicate which ASR model is being used.
+            Mod9-only attribute.
         channel_tag (int):
             Mod9: not available at present.
     """
@@ -278,10 +288,11 @@ class StreamingRecognitionResult(proto.Message):
     stability = proto.Field(proto.FLOAT, number=3)
     result_end_time = proto.Field(duration.Duration, number=4)
     language_code = proto.Field(proto.STRING, number=6)
-    # Mod9-only attribute
+
+    # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
-    # Mod9-only attribute
     words = proto.RepeatedField(SpeechRecognitionWordAlternative, number=902)
+    asr_model = proto.Field(proto.STRING, number=903)
 
 
 class StreamingRecognizeResponse(proto.Message):
@@ -363,12 +374,8 @@ class StreamingRecognizeResponse(proto.Message):
 class RecognitionConfig(proto.Message):
     """
     OVERRIDE: Provides information to the recognizer that specifies how
-    to process the request. Mod9 subclass to support Mod9-only attributes:
-    - ``latency``
-    - ``max_phrase_alternatives``
-    - ``max_word_alternatives``
-    - ``options_json``
-    - ``speed``
+    to process the request.
+    This is a Mod9 subclass with some Mod9-only attributes.
 
     Attributes:
         encoding (RecognitionConfig.AudioEncoding):
@@ -505,9 +512,9 @@ class RecognitionConfig(proto.Message):
         ENCODING_UNSPECIFIED = 0
         LINEAR16 = 1
         MULAW = 3
-        # Mod9-only option
-        ALAW = 901
+        ALAW = 901  # Mod9-only attribute
 
+    # Google-compatible attributes:
     encoding = proto.Field(proto.ENUM, number=1, enum=AudioEncoding,)
     sample_rate_hertz = proto.Field(proto.INT32, number=2)
     language_code = proto.Field(proto.STRING, number=3)
@@ -516,7 +523,8 @@ class RecognitionConfig(proto.Message):
     model = proto.Field(proto.STRING, number=13)
     enable_word_confidence = proto.Field(proto.BOOL, number=15)
     enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
-    # Mod9-only option
+
+    # Mod9-only attributes:
     max_phrase_alternatives = proto.Field(proto.INT32, number=901)
     latency = proto.Field(proto.FLOAT, number=902)
     speed = proto.Field(proto.INT32, number=903)

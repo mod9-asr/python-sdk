@@ -7,19 +7,19 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
 DESCRIPTION = """
-This specialized tool can be used to replicate results from rmtg.co/benchmark by suitably
-formatting and scoring output from the Mod9 ASR Engine.
-It reads lines of JSON (i.e. JSONL format) from stdin and prints a report on stdout, saving
-files in a work directory.
-It can also read input formatted as per the Google STT service (i.e. a single JSON object).
-This uses the official NIST SCTK software, which is expected to be installed on the system,
-and also requires certain reference data files which might be downloaded.
-Each of those dependencies is installed in the mod9/asr Docker image for convenience.
-The Switchboard audio data is needed for meaningful demonstration and could
-be obtained from the Linguistic Data Consortium (https://catalog.ldc.upenn.edu/LDC2002S09).
+This specialized tool can be used to score the Switchboard benchmark by suitably formatting and
+scoring output from the Mod9 ASR Engine. It reads lines of JSON (i.e. JSONL format) from stdin and
+prints a report on stdout, saving files in a work directory.
+It can also read input formatted as per the Google STT service as well as Amazon Transcribe.
+This uses the official NIST SCTK software, which is expected to be installed on the system, and also
+requires certain reference data files which might be downloaded. These dependencies are already
+installed in the mod9/asr Docker image for convenience.
+The Switchboard audio data is needed for meaningful demonstration and could be obtained from the
+Linguistic Data Consortium (https://catalog.ldc.upenn.edu/LDC2002S09).
 """
 
 ALTERNATIVES_LEVELS = [
@@ -28,23 +28,16 @@ ALTERNATIVES_LEVELS = [
     'transcript',  # i.e. N-best
 ]
 
-EXCLUDE_WORDS = [
+OMITTED_WORDS = [
     # These non-speech words are not transcribed in the reference, and will always hurt the score.
     '[cough]',
     '[laughter]',
     '[noise]',
-    # These hesitations are optionally deletable in the reference, and can never help the score.
-    'ah',
-    'er',
-    'huh',
-    'mm',
-    'uh',
-    'um',
 ]
 
 REFERENCE_GLM = 'switchboard-benchmark.glm'
 REFERENCE_STM = 'switchboard-benchmark.stm'
-REFERENCE_URL = 'https://mod9.io'
+REFERENCE_URL = 'https://mod9.io/switchboard-benchmark'
 
 SCLITE_OPTS = '-F -D'
 
@@ -126,13 +119,14 @@ def install_reference(reference_filename, reference_url):
         info(f"Did not find {reference_filename}; downloading from {reference_url} ...")
         try:
             with urllib.request.urlopen(os.path.join(reference_url, reference_filename)) as resp:
-                with open(reference_filename, 'wb') as glm_file:
-                    shutil.copyfileobj(resp, glm_file)
+                with tempfile.NamedTemporaryFile(delete=False) as ntf:
+                    shutil.copyfileobj(resp, ntf)
+                    os.rename(ntf.name, reference_filename)
         except Exception:
             error(f"Unable to download {reference_filename} from {reference_url}.")
 
 
-def convert_json_to_jsonl(json_filename, jsonl_filename):
+def convert_google_json_to_jsonl(json_filename, jsonl_filename):
     """
     Convert Google STT formatted JSON to ASR Engine formatted JSON lines.
     """
@@ -214,12 +208,35 @@ def convert_json_to_jsonl(json_filename, jsonl_filename):
             start_time = end_time
 
 
+def convert_amazon_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert Amazon Transcribe formatted JSON to ASR Engine formatted JSON lines.
+    This only handles results with 1-best transcripts, not transcript-level alternatives.
+    """
+    response = json.load(open(json_filename, 'r', encoding='utf-8'))
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        result = response['results']
+        reply = {
+            'final': True,
+            'transcript': result['transcripts'][0]['transcript']
+        }
+        reply['words'] = []
+        for item in result['items']:
+            if item['type'] == 'pronunciation':  # i.e. a "word"
+                word = item['alternatives'][0]['content']
+                reply['words'].append({
+                    'confidence': item['alternatives'][0]['confidence'],
+                    'interval': [float(item['start_time']), float(item['end_time'])],
+                    'word': word})
+        jsonl_file.write(json.dumps(reply) + '\n')
+
+
 def convert_jsonl_to_ctm(
         jsonl_filename, ctm_filename,
         key1, key2,
         alternatives=None,
         alternatives_max=None,
-        exclude_words=[],
+        omitted_words=[],
         split_initialisms=True,
 ):
     """
@@ -237,7 +254,7 @@ def convert_jsonl_to_ctm(
     with the csrfilt.sh tool. If the alternatives_max argument is specified,
     this will limit the number of alternatives considered.
 
-    The list of exclude_words is used as a simple filter to remove words in
+    The list of omitted_words is used as a simple filter to remove words in
     ASR output that is not well matched to the reference conventions. For
     example, it is never helpful to transcribe non-speech noises, since the
     reference does not include these and they will become insertion errors.
@@ -292,7 +309,7 @@ def convert_jsonl_to_ctm(
                             # a situation in which the top-ranked word alternative is silence.
                             error('Unexpected empty word.')
 
-                        if word in exclude_words:
+                        if word in omitted_words:
                             continue
 
                         confidence = word_obj.get('confidence')
@@ -303,7 +320,7 @@ def convert_jsonl_to_ctm(
                         error('Transcript-level intervals are expected.')
                     begin_time = reply['interval'][0]
                     duration = reply['interval'][1] - begin_time
-                    words = [w for w in reply['transcript'].split() if w not in exclude_words]
+                    words = [w for w in reply['transcript'].split() if w not in omitted_words]
                     if words:
                         write_words(key1, key2, begin_time, duration, words)
             else:
@@ -323,7 +340,7 @@ def convert_jsonl_to_ctm(
                         for alt in alts:
                             words = []
                             for w in alt['phrase'].split():
-                                if w in exclude_words:
+                                if w in omitted_words:
                                     w = '@'  # Special NIST SCTK convention for optional word.
                                 words.append(w)
                             alt['phrase'] = ' '.join(words)
@@ -351,7 +368,7 @@ def convert_jsonl_to_ctm(
                     for alt in alts:
                         words = []
                         for w in alt['transcript'].split():
-                            if w in exclude_words:
+                            if w in omitted_words:
                                 w = '@'  # Special NIST SCTK convention for optional word.
                             words.append(w)
                         alt['transcript'] = ' '.join(words)
@@ -380,7 +397,7 @@ def convert_jsonl_to_ctm(
                         alts = word_obj['alternatives'][:alternatives_max]
 
                         for alt in alts:
-                            if alt['word'] == '' or alt['word'] in exclude_words:
+                            if alt['word'] == '' or alt['word'] in omitted_words:
                                 alt['word'] = '@'  # Special NIST SCTK convention for optional word.
 
                         # NOTE: in theory we should be able to use confidence for word alternatives.
@@ -422,25 +439,28 @@ def expand_alt_section(alt_section, max_expansions=None):
 
 
 def unique_alt_sections(alt_sections):
-    """Optimize downstream processing by removing duplicated alt sections."""
-    uniq_alt_sections = set()
+    """Optimize downstream processing by removing duplicated (and empty) alt sections."""
+    # NOTE: retain the order of alternatives so that tiebreakers with the same number of errors will
+    # favor alternatives which occur first (i.e. are more likely in an N-best, or reflect the
+    # surface form in a GLM expansion). If we wanted to game the scoring metric, we would sort these
+    # in decreasing order of length so as to maximize the number of correct words.
+    uniq_alt_sections = {}  # Python dicts iterate keys in insertion order.
     for alt_section in alt_sections:
         curr_alt_section = ''
         for line in alt_section.strip().split('\n'):
             key1, key2, begin_time, duration, word = line.split(None, 4)
             if word == '<ALT>':
                 # This was an expanded alt section.
-                uniq_alt_sections.add(curr_alt_section)
+                uniq_alt_sections[curr_alt_section] = None
                 curr_alt_section = ''
             else:
                 curr_alt_section += line+'\n'
-        uniq_alt_sections.add(curr_alt_section)
-
-    # Order shouldn't matter, but let's keep it deterministic.
-    return sorted(uniq_alt_sections)
+        uniq_alt_sections[curr_alt_section] = None
+    return uniq_alt_sections.keys()
 
 
-def refilter_ctm(ctm_in_filename, ctm_out_filename, max_expansions=None):
+def refilter_ctm(ctm_in_filename, ctm_out_filename,
+                 max_expansions=None, omit_backchannels=False, omit_hesitations=False):
     """
     Post-process a CTM file that was produced by running the NIST SCTK tool
     csrfilt.sh on an original input CTM including hypothesis alternations.
@@ -483,6 +503,11 @@ def refilter_ctm(ctm_in_filename, ctm_out_filename, max_expansions=None):
 
     with open(ctm_in_filename, 'r') as ctm_in_file, open(ctm_out_filename, 'w') as ctm_out_file:
         for line in ctm_in_file:
+            if omit_backchannels:
+                line = line.replace('%BCACK', '@')
+                line = line.replace('%BCNACK', '@')
+            if omit_hesitations:
+                line = line.replace('%HESITATION', '@')
             if '<ALT_BEGIN>' in line:
                 alt_begin_line = line
                 if in_nested_alt:
@@ -521,6 +546,20 @@ def refilter_ctm(ctm_in_filename, ctm_out_filename, max_expansions=None):
                 alt_sections[-1] += line
             else:
                 ctm_out_file.write(line)
+
+
+def refilter_stm(stm_in_filename, stm_out_filename, optional_backchannels=False):
+    """
+    There is a bug in NIST SCTK w.r.t. placement of parentheses around curly braces and backslashes,
+    i.e. when representing an optionally deleteable alternation.
+    Also allow for optionally deletable backchannel mappings (i.e. %BCACK and %BCNACK in the GLM).
+    """
+    if optional_backchannels:
+        optional_backchannels_filter = '| sed "s,%BCACK,(%BCACK),g; s,%BCNACK,(%BCNACK),g"'
+    else:
+        optional_backchannels_filter = ''
+    run('sed "s,(/),/,g; s,({,{(,g; s,}),)},g"'
+        f" < {stm_in_filename} {optional_backchannels_filter} > {stm_out_filename}")
 
 
 def convert_stm_1seg(old_stm_filename, new_stm_filename):
@@ -606,12 +645,13 @@ def nist_report(switchboard_speaker_id, show_errors=False):
             curr_width += 1
     if depths and widths:
         N_max = max(depths)   # When requesting N-best, in practice the depth might be less than N.
-        N_med = sorted(depths)[len(depths)//2]  # This is more informative than the mean.
+        N_dec = sorted(depths)[-len(depths)//10]  # The top decile is more informative than the max.
+        N_med = sorted(depths)[len(depths)//2]    # The median is more informative than the mean.
         S = len(depths)       # Number of spans/segments.
         W_avg = sum(widths) / len(widths)  # This relates to the average-case performance.
         W_max = max(widths)   # This relates to the worst-case performance, e.g. for sclite scoring.
         info('Alternatives:      '
-             f"N_max={N_max} N_med={N_med} S={S} W_avg={W_avg:0.1f} W_max={W_max}")
+             f"N_max={N_max} N_dec={N_dec} N_med={N_med} S={S} W_avg={W_avg:0.1f} W_max={W_max}")
 
     sum_line = run(f"grep Sum {switchboard_speaker_id}.nist.raw").stdout.decode()
     fields = sum_line.strip().split()
@@ -663,17 +703,32 @@ def main_helper():
         help='Limit the number of alternatives (i.e. N-best) to be considered.',
     )
     parser.add_argument(
-        '--exclude-words',
-        metavar='LIST',
-        default=','.join(EXCLUDE_WORDS),
-        help='Comma-separated list of words to exclude from the CTM.',
-    )
-    parser.add_argument(
         '--max-expansions',
         metavar='INT',
         type=int,
         help='Mitigate SCTK bug by limiting nested alternative expansions, e.g. transcript-level.',
         default=0,
+    )
+    parser.add_argument(
+        '--omit-hesitations',
+        action='store_true',
+        help='CTM should not include hesitations (optionally deletable in the STM).',
+    )
+    parser.add_argument(
+        '--omit-backchannels',
+        action='store_true',
+        help='CTM should not include backchannels (cf. --optional-backchannels).',
+    )
+    parser.add_argument(
+        '--omitted-words',
+        metavar='LIST',
+        default=','.join(OMITTED_WORDS),
+        help='Comma-separated list of non-speech words to omit from the CTM.',
+    )
+    parser.add_argument(
+        '--optional-backchannels',
+        action='store_true',
+        help='Backchannels can be optionally deleted in the STM.',
     )
     parser.add_argument(
         '--reference-glm',
@@ -694,7 +749,7 @@ def main_helper():
         default=REFERENCE_URL,
     )
     parser.add_argument(
-        '--score-overall',
+        '--sclite',
         action='store_true',
         help='Run NIST sclite tool over all files.',
     )
@@ -733,7 +788,7 @@ def main_helper():
     os.makedirs(args.workdir, exist_ok=True)
     os.chdir(args.workdir)
 
-    if args.score_overall:
+    if args.sclite:
         run('cat *.ctm.refilt > overall.refilt.ctm')
         run('cat *.stm.refilt > overall.refilt.stm')
         run('sclite -h overall.refilt.ctm ctm -r overall.refilt.stm stm -n overall.nist '
@@ -776,7 +831,14 @@ def main_helper():
             for line in lines:
                 f.write(line)
         info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
-        convert_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+        convert_google_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    elif lines and lines[0].startswith('{"jobName"'):
+        info(f"Save JSON (Amazon Transcribe formatted) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_amazon_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
     else:
         info(f"Save JSON lines (Engine replies) from stdin: {spkid}.jsonl")
         with open(spkid+'.jsonl', 'w') as f:
@@ -788,13 +850,14 @@ def main_helper():
                          filename_id, channel_id,
                          alternatives=args.alternatives if args.alternatives_n != 0 else None,
                          alternatives_max=args.alternatives_n,
-                         exclude_words=args.exclude_words.split(','))
+                         omitted_words=args.omitted_words.split(','))
 
     info(f"Apply global mappings to make filtered file: {spkid}.ctm.filt")
     run(f"csrfilt.sh -i ctm -t hyp -dh {args.reference_glm} < {spkid}.ctm > {spkid}.ctm.filt")
 
-    info(f"Fix SCTK bug (nested alternative expansion): {spkid}.ctm.refilt")
-    refilter_ctm(spkid+'.ctm.filt', spkid+'.ctm.refilt', args.max_expansions)
+    info(f"Fix SCTK bug, omit hesitations/backchannels: {spkid}.ctm.refilt")
+    refilter_ctm(spkid+'.ctm.filt', spkid+'.ctm.refilt',
+                 args.max_expansions, args.omit_backchannels, args.omit_hesitations)
 
     info(f"Extract reference transcription for speaker: {spkid}.stm")
     run(f"grep '^{filename_id} {channel_id} {spkid}' < {args.reference_stm} > {spkid}.stm")
@@ -802,9 +865,8 @@ def main_helper():
     info(f"Apply global mappings to make filtered file: {spkid}.stm.filt")
     run(f"csrfilt.sh -i stm -t ref -dh {args.reference_glm} < {spkid}.stm > {spkid}.stm.filt")
 
-    # TODO: report this to Jon Fiscus?
-    info(f"Fix SCTK bug (optional delete alternatives): {spkid}.stm.refilt")
-    run('sed "s,(/),/,g; s,({,{(,g; s,}),)},g"' + f" < {spkid}.stm.filt > {spkid}.stm.refilt")
+    info(f"Fix SCTK bugs (optional alts, backchannels): {spkid}.stm.refilt")
+    refilter_stm(spkid+'.stm.filt', spkid+'.stm.refilt', args.optional_backchannels)
 
     stm = f"{spkid}.stm.refilt"
     if args.single_segment_stm:
