@@ -487,22 +487,23 @@ class RecognitionConfig(proto.Message):
     class AudioEncoding(proto.Enum):
         """
         OVERRIDE: The encoding of the audio data sent in the request.
-        Mod9 subclass to support Mod9-only attribute ``ALAW``.
+        Mod9 subclass to support Mod9-only attributes:
+        ``ALAW``, ``LINEAR24``, ``LINEAR32``, and ``FLOAT32``.
 
         All encodings support only 1 channel (mono) audio.
 
         For best results, the audio source should be captured and
-        transmitted using a lossless encoding (``LINEAR16``). The
-        accuracy of the speech recognition can be reduced if lossy
+        transmitted using a lossless encoding (e.g. ``LINEAR16``).
+        The accuracy of the speech recognition can be reduced if lossy
         codecs are used to capture or transmit audio, particularly if
         background noise is present. Lossy codecs include ``ALAW``, and
         ``MULAW``.
 
         The ``WAV`` audio file formats include a header that describes
         the included audio content. You can request recognition for
-        ``WAV`` files that contain either ``LINEAR16``, ``ALAW``, or
-        ``MULAW`` encoded audio. If you send ``WAV`` audio file format
-        in your request, you do not need to specify an
+        ``WAV`` files that contain ``LINEAR16``, ``ALAW``, or
+        ``MULAW`` encoded audio, among several others.  If ``WAV`` audio
+        file format is specified in a request, it is not needed to set
         ``AudioEncoding``; the audio encoding format is determined from
         the file header. If you specify an ``AudioEncoding`` when you
         send ``WAV`` audio, the encoding configuration must match the
@@ -512,7 +513,12 @@ class RecognitionConfig(proto.Message):
         ENCODING_UNSPECIFIED = 0
         LINEAR16 = 1
         MULAW = 3
-        ALAW = 901  # Mod9-only attribute
+
+        # Mod9-only attributes.
+        ALAW = 901
+        LINEAR24 = 902
+        LINEAR32 = 903
+        FLOAT32 = 904
 
     # Google-compatible attributes:
     encoding = proto.Field(proto.ENUM, number=1, enum=AudioEncoding,)
@@ -603,10 +609,8 @@ class SpeechClient(object):
 
     def __init__(self, host=None, port=None, *args, **kwargs):
         """Ignore arguments other than host and port, and set Mod9's custom transport."""
-        if host is not None:
-            config.ASR_ENGINE_HOST = host
-        if port is not None:
-            config.ASR_ENGINE_PORT = port
+        self.host = host
+        self.port = port
 
     def long_running_recognize(self, request=None, *, config=None, audio=None, **kwargs):
         """
@@ -615,7 +619,12 @@ class SpeechClient(object):
         Mod9: Not currently implemented.
         """
         # TODO: similar logic to recognize for handling various input types.
-        return common.long_running_recognize(request, **kwargs)
+        return common.long_running_recognize(
+            request,
+            host=self.host,
+            port=self.port,
+            **kwargs,
+        )
 
     def recognize(self, request=None, *, config=None, audio=None, **kwargs):
         """
@@ -653,7 +662,13 @@ class SpeechClient(object):
             )
         if not isinstance(request, RecognizeRequest):
             request = RecognizeRequest(**request)
-        return common.recognize(request, module=sys.modules[__name__], **kwargs)
+        return common.recognize(
+            request,
+            module=sys.modules[__name__],
+            host=self.host,
+            port=self.port,
+            **kwargs,
+        )
 
     def streaming_recognize(self, config, requests, **kwargs):
         """
@@ -691,6 +706,8 @@ class SpeechClient(object):
         return common.streaming_recognize(
             self._streaming_request_iterable(config, requests),
             module=sys.modules[__name__],
+            host=self.host,
+            port=self.port,
             **kwargs,
         )
 

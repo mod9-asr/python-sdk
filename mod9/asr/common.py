@@ -19,6 +19,8 @@ def long_running_recognize(
     timeout=None,
     metadata=None,
     module=cloud_speech,
+    host=None,
+    port=None,
     *args,
     **kwargs,
 ):
@@ -37,6 +39,8 @@ def recognize(
     timeout=None,
     metadata=None,
     module=cloud_speech,
+    host=None,
+    port=None,
     *args,
     **kwargs,
 ):
@@ -60,6 +64,10 @@ def recognize(
         module (module):
             Module to read Google-like types from, in case of
             subclassing. Default is ``google.cloud.speech_v1p1beta1``.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         RecognizeResponse:
@@ -78,13 +86,20 @@ def recognize(
     options, requests = reformat.input_to_mod9(
         {'config': request.config, 'audio': request.audio},
         module=module,
+        host=host,
+        port=port,
     )
 
     # Read Engine responses.
-    mod9_results = get_transcripts_mod9(options, requests)
+    mod9_results = get_transcripts_mod9(
+        options,
+        requests,
+        host=host,
+        port=port,
+    )
 
     # Convert Mod9 style to Google style.
-    google_result_dicts = reformat.result_from_mod9(mod9_results)
+    google_result_dicts = reformat.result_from_mod9(mod9_results, host=host, port=port)
 
     # Convert Mod9 type to Google type.
     google_results = reformat.google_type_result_from_dict(
@@ -107,6 +122,8 @@ def streaming_recognize(
     timeout=None,
     metadata=None,
     module=cloud_speech,
+    host=None,
+    port=None,
     *args,
     **kwargs,
 ):
@@ -139,6 +156,10 @@ def streaming_recognize(
         module (module):
             Module to read Google-like types from, in case of
             subclassing. Default is ``google.cloud.speech_v1p1beta1``.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         Iterable[StreamingRecognizeResponse]
@@ -154,14 +175,24 @@ def streaming_recognize(
     request = next(requests)
 
     # Parse inputs to ensure they are the expected encoding, have allowed arguments.
-    options, _ = reformat.input_to_mod9({'config': request['streaming_config']}, module=module)
+    options, _ = reformat.input_to_mod9(
+        {'config': request['streaming_config']},
+        module=module,
+        host=host,
+        port=port,
+    )
 
     # Read Engine responses.
     audio_requests = (request.audio_content for request in requests)
-    mod9_results = get_transcripts_mod9(options, audio_requests)
+    mod9_results = get_transcripts_mod9(
+        options,
+        audio_requests,
+        host=host,
+        port=port,
+    )
 
     # Convert Mod9 style to Google style.
-    google_result_dicts = reformat.result_from_mod9(mod9_results)
+    google_result_dicts = reformat.result_from_mod9(mod9_results, host=host, port=port)
 
     # Convert Mod9 type to Google type.
     google_results = reformat.google_type_result_from_dict(

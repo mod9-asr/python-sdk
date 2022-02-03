@@ -44,9 +44,11 @@ class Mod9ASREngineTransport(object):
     """Duck-typed SpeechTransport"""
     _wrapped_methods = {}
 
-    def __init__(self):
+    def __init__(self, host=None, port=None):
         self._wrapped_methods[self.recognize] = recognize
         self._wrapped_methods[self.streaming_recognize] = streaming_recognize
+        self.host = host
+        self.port = port
 
     def long_running_recognize(self, *args, **kwargs):
         """
@@ -54,7 +56,12 @@ class Mod9ASREngineTransport(object):
 
         Mod9: Not currently implemented.
         """
-        return long_running_recognize(*args, **kwargs)
+        return long_running_recognize(
+            *args,
+            host=self.host,
+            port=self.port,
+            **kwargs,
+        )
 
     def recognize(self, *args, **kwargs):
         """
@@ -82,7 +89,12 @@ class Mod9ASREngineTransport(object):
                 ``Recognize`` method. It contains the result as zero or
                 more sequential ``SpeechRecognitionResult`` messages.
         """
-        return recognize(*args, **kwargs)
+        return recognize(
+            *args,
+            host=self.host,
+            port=self.port,
+            **kwargs,
+        )
 
     def streaming_recognize(self, *args, **kwargs):
         """
@@ -115,7 +127,12 @@ class Mod9ASREngineTransport(object):
         Returns:
             Iterable[StreamingRecognizeResponse]
         """
-        return streaming_recognize(*args, **kwargs)
+        return streaming_recognize(
+            *args,
+            host=self.host,
+            port=self.port,
+            **kwargs,
+        )
 
 
 class SpeechClient(cloud_speech.SpeechClient):
@@ -123,8 +140,4 @@ class SpeechClient(cloud_speech.SpeechClient):
 
     def __init__(self, host=None, port=None, *args, **kwargs):
         """OVERRIDE: ignore arguments, set Mod9's custom transport."""
-        if host is not None:
-            config.ASR_ENGINE_HOST = host
-        if port is not None:
-            config.ASR_ENGINE_PORT = port
-        self._transport = Mod9ASREngineTransport()
+        self._transport = Mod9ASREngineTransport(host=host, port=port)

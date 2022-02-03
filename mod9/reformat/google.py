@@ -124,7 +124,11 @@ class GoogleConfigurationSettingsAndMappings:
             'ENCODING_UNSPECIFIED',
             'LINEAR16',
             'MULAW',
-            'ALAW',  # only in Mod9
+            # Only in Mod9:
+            'ALAW',
+            'LINEAR24',
+            'LINEAR32',
+            'FLOAT32',
         }
         self.google_rate_allowed_values = range(8000, 48001)
         self.google_confidence_allowed_values = {True, False}
@@ -173,10 +177,19 @@ class GoogleConfigurationSettingsAndMappings:
             'LINEAR16': 'pcm_s16le',
             'MULAW': 'mu-law',
             'ALAW': 'a-law',
+            'LINEAR24': 'pcm_s24le',
+            'LINEAR32': 'pcm_s32le',
+            'FLOAT32': 'pcm_f32le',
         }
 
 
-def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
+def input_to_mod9(
+    google_input_settings,
+    module,
+    logger=logging.getLogger(),
+    host=None,
+    port=None
+):
     """
     Wrapper method to take Google inputs of various types and return
     Mod9-compatible inputs.
@@ -189,6 +202,10 @@ def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
         module (module):
             Module to read Google-like-types from, in case of
             subclassing.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         tuple:
@@ -198,7 +215,7 @@ def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
                 Mod9-style audio to pass to Mod9 ASR Engine TCP Server.
     """
 
-    engine_version = utils.get_version_mod9()
+    engine_version = utils.get_version_mod9(host=host, port=port)
     if not utils.is_compatible_mod9(engine_version):
         raise utils.Mod9IncompatibleEngineVersionError(
             f"Python SDK version {WRAPPER_VERSION} compatible range"
@@ -246,6 +263,8 @@ def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
     mod9_config_settings = google_config_settings_to_mod9(
         google_config_settings_dict,
         logger=logger,
+        host=host,
+        port=port,
     )
     mod9_audio_settings = google_audio_settings_to_mod9(google_audio_settings_dict)
 
@@ -295,7 +314,12 @@ def input_to_mod9(google_input_settings, module, logger=logging.getLogger()):
     return mod9_config_settings, mod9_audio_settings
 
 
-def google_config_settings_to_mod9(google_config_settings, logger=logging.getLogger()):
+def google_config_settings_to_mod9(
+    google_config_settings,
+    logger=logging.getLogger(),
+    host=None,
+    port=None
+):
     """
     Map from Google-style key:value inputs to Mod9 ASR TCP server-style
     key:value inputs.
@@ -303,6 +327,10 @@ def google_config_settings_to_mod9(google_config_settings, logger=logging.getLog
     Args:
         google_config_settings (dict):
             Google-style options.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         dict:
@@ -334,7 +362,7 @@ def google_config_settings_to_mod9(google_config_settings, logger=logging.getLog
 
     if 'languageCode' not in google_config_settings and 'asrModel' not in google_config_settings:
         log_string = 'No languageCode given. Defaulting to first loaded model: %s of language %s.'
-        models = utils.get_loaded_models_mod9()
+        models = utils.get_loaded_models_mod9(host=host, port=port)
         default_model_name = models[0].get('name', 'model')
         default_model_language = models[0]['language']
         logger.warning(log_string, default_model_name, default_model_language)
@@ -346,6 +374,10 @@ def google_config_settings_to_mod9(google_config_settings, logger=logging.getLog
     google_config_settings = {
         key: value for key, value in google_config_settings.items() if value
     }
+
+    # Accept ``"useEnhanced"`` for compatibility with Google, but discard.
+    if 'useEnhanced' in google_config_settings:
+        del google_config_settings['useEnhanced']
 
     # A subset of possible Google keys are supported by this wrapper and the Mod9 Engine.
     for google_key in google_config_settings:
@@ -394,7 +426,11 @@ def google_config_settings_to_mod9(google_config_settings, logger=logging.getLog
 
     if not mod9_config_settings.get('asr-model'):
         # Set appropriate model based on user input ``languageCode``.
-        models = utils.find_loaded_models_with_language(google_config_settings['languageCode'])
+        models = utils.find_loaded_models_with_language(
+            google_config_settings['languageCode'],
+            host=host,
+            port=port,
+        )
         if len(models) == 0:
             raise ValueError(
                 f"Language {google_config_settings['languageCode']} not supported or "
@@ -473,13 +509,22 @@ def google_audio_settings_to_mod9(google_audio_settings):
     return mod9_audio_settings
 
 
-def result_from_mod9(mod9_results, logger=logging.getLogger()):
+def result_from_mod9(
+    mod9_results,
+    logger=logging.getLogger(),
+    host=None,
+    port=None,
+):
     """
     Map from Mod9 TCP server-style output to Google-style output.
 
     Args:
         mod9_results (Iterable[dict]):
             Mod9-style results from the Mod9 ASR Engine TCP Server.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Yields:
         dict:
@@ -508,7 +553,7 @@ def result_from_mod9(mod9_results, logger=logging.getLogger()):
             if mod9_result.get('asr_model'):
                 # This is expected to be the first reply.
                 asr_model = mod9_result['asr_model']
-                models = utils.get_loaded_models_mod9()
+                models = utils.get_loaded_models_mod9(host=host, port=port)
                 for model in models:
                     if model['name'] == asr_model:
                         language_code = model['language']

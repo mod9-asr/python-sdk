@@ -164,11 +164,14 @@ def extract_encoding_and_rate_from_wav_header(wav_header):
         encoding_bytes = wav_header[20:22]
         if encoding_bytes == b'\x01\x00':
             wav_encoding = 'pcm_s16le'
+        elif encoding_bytes == b'\x03\x00':
+            wav_encoding = 'pcm_f32le'
         elif encoding_bytes == b'\x06\x00':
             wav_encoding = 'a-law'
         elif encoding_bytes == b'\x07\x00':
             wav_encoding = 'mu-law'
         else:
+            # TODO: handle WAVE_FORMAT_EXTENSIBLE with subformats.
             wav_encoding = True
         # Get the sample rate.
         sample_rate = int.from_bytes(wav_header[24:28], byteorder='little')
@@ -438,6 +441,32 @@ def _make_eof_producer(producer):
     return new_producer
 
 
+def connect_to_engine(host=None, port=None):
+    """
+    Create a socket connection to Engine at ``host``, ``port``.
+
+    Args:
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
+
+    Returns:
+        socket.socket:
+            The socket connection to the Engine.
+    """
+
+    if host is None:
+        host = config.ASR_ENGINE_HOST
+    if port is None:
+        port = config.ASR_ENGINE_PORT
+
+    return socket.create_connection(
+        (host, port),
+        timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
+    )
+
+
 prefix_producer_map = {
     'file':  file_producer,
     'gs':    google_cloud_producer,
@@ -447,7 +476,12 @@ prefix_producer_map = {
 }
 
 
-def get_transcripts_mod9(options, audio_input):
+def get_transcripts_mod9(
+    options,
+    audio_input,
+    host=None,
+    port=None,
+):
     """
     Open TCP connection to Mod9 server, send input, and yield output
     generator.
@@ -457,16 +491,17 @@ def get_transcripts_mod9(options, audio_input):
             Transcription options for Engine.
         audio_input (Union[GeneratorType, TeeGeneratorType, str]):
             Audio content to be transcribed.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Yields:
         dict[str, Union[dict, float, int, str]]:
             Result from Mod9 ASR Engine TCP Server.
     """
 
-    with socket.create_connection(
-        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
-        timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
-    ) as sock:
+    with connect_to_engine(host=host, port=port) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
         # Start by sending the options as JSON on the first line (terminated w/ newline character).
@@ -509,22 +544,22 @@ def get_transcripts_mod9(options, audio_input):
         producer_thread.join()
 
 
-def get_loaded_models_mod9():
+def get_loaded_models_mod9(host=None, port=None):
     """
     Query Engine for a list of models and return loaded models.
 
     Args:
-        None
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         dict[str, dict[str, Union[bool, dict, int, str]]]:
             Metadata about models currently loaded in Engine.
     """
 
-    with socket.create_connection(
-        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
-        timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
-    ) as sock:
+    with connect_to_engine(host=host, port=port) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
         # Start by sending request to list models (terminated w/ newline character).
@@ -549,32 +584,40 @@ def get_loaded_models_mod9():
         return get_models_response['asr_models']
 
 
-def find_loaded_models_with_rate(rate):
+def find_loaded_models_with_rate(rate, host=None, port=None):
     """
     Get all models loaded in Engine that have the specified rate.
 
     Args:
         rate (int):
             Check for loaded Engine models with this rate.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         list[dict[str, Union[bool, dict, int, str]]]:
             Metadata about models currently loaded in Engine with specified rate (or empty list).
     """
     try:
-        models = get_loaded_models_mod9()
+        models = get_loaded_models_mod9(host=host, port=port)
     except Mod9UnexpectedEngineResponseError:
         return []
     return [model for model in models if model['rate'] == rate]
 
 
-def find_loaded_models_with_language(language_code):
+def find_loaded_models_with_language(language_code, host=None, port=None):
     """
     Get all models loaded in Engine with the specified language code prefix.
 
     Args:
         language_code (str):
             Check for loaded Engine models with the prefix of this language code.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         list[dict[str, Union[bool, dict, int, str]]]:
@@ -583,7 +626,7 @@ def find_loaded_models_with_language(language_code):
     """
 
     try:
-        models = get_loaded_models_mod9()
+        models = get_loaded_models_mod9(host=host, port=port)
     except Mod9UnexpectedEngineResponseError:
         return []
     language_code_region = language_code.lower().split(sep='-')
@@ -599,12 +642,15 @@ def find_loaded_models_with_language(language_code):
     return possible_models
 
 
-def get_model_languages():
+def get_model_languages(host=None, port=None):
     """
     Get the language code of all models loaded in the Engine.
 
     Args:
-        None.
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         set[str]:
@@ -612,7 +658,7 @@ def get_model_languages():
     """
 
     try:
-        models = get_loaded_models_mod9()
+        models = get_loaded_models_mod9(host=host, port=port)
     except Mod9UnexpectedEngineResponseError:
         return set()
     languages = set()
@@ -686,12 +732,15 @@ def select_best_model_for_language_code(models, language_code, model_type=None):
     return models[0]
 
 
-def get_version_mod9():
+def get_version_mod9(host=None, port=None):
     """
     Query Engine for version number.
 
     Args:
-        None
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         string:
@@ -704,10 +753,7 @@ def get_version_mod9():
             Version parsing errors.
     """
 
-    with socket.create_connection(
-        (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
-        timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
-    ) as sock:
+    with connect_to_engine(host=host, port=port) as sock:
         sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
         sock.sendall('{"command": "get-version"}\n'.encode())
@@ -755,13 +801,16 @@ def is_compatible_mod9(engine_version_string):
     return is_within_lower_bound and is_within_upper_bound
 
 
-def test_host_port(logger=None):
+def test_host_port(logger=None, host=None, port=None):
     """
     Check if Mod9 ASR Engine is online. Loop until get-info command
     provides a ``ready`` response. Log stats.
 
     Args:
-        None
+        host (Union[str, None]):
+            Engine host, or None to default to config.
+        port (Union[int, None]):
+            Engine port, or None to default to config.
 
     Returns:
         None
@@ -770,7 +819,7 @@ def test_host_port(logger=None):
     if not logger:
         logger = logging.root
 
-    engine_version = get_version_mod9()
+    engine_version = get_version_mod9(host=host, port=port)
     if not is_compatible_mod9(engine_version):
         raise Mod9IncompatibleEngineVersionError(
             f"This Python SDK version {config.WRAPPER_VERSION} is not compatible with"
@@ -789,10 +838,7 @@ def test_host_port(logger=None):
     response = dict()
     response_raw = ''
     while response.get('state') != 'ready':
-        with socket.create_connection(
-            (config.ASR_ENGINE_HOST, config.ASR_ENGINE_PORT),
-            timeout=config.SOCKET_CONNECTION_TIMEOUT_SECONDS,
-        ) as sock:
+        with connect_to_engine(host=host, port=port) as sock:
             sock.settimeout(config.SOCKET_INACTIVITY_TIMEOUT_SECONDS)
 
             sock.sendall('{"command": "get-info"}\n'.encode())

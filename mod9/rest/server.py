@@ -564,7 +564,7 @@ def main():
     config.ASR_ENGINE_PORT = args.engine_port
 
     if not args.skip_engine_check:
-        utils.test_host_port(logger)
+        utils.test_host_port(logger=logger)
 
     # See https://flask.palletsprojects.com/en/2.0.x/deploying/index.html
     logger.warning(

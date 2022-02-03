@@ -6,9 +6,13 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.6.0'
+WRAPPER_VERSION = '1.7.0'
 
 # CHANGELOG:
+#   1.7.0 (02 Feb 2022):
+#   - Allow multiple clients to connect to different Engine hosts and ports.
+#   - Support more audio encodings: 24- and 32-bit signed integers and 32-bit float.
+#   - Add IBM Watson format conversion to mod9-asr-switchboard-benchmark.
 #   1.6.0 (10 Jan 2022):
 #   - Add "asrModel" to results using speech_mod9 and REST API.
 #   - Minor fixes to mod9-asr-switchboard-benchmark and new features:
@@ -73,7 +77,8 @@ WRAPPER_VERSION = '1.6.0'
 # Range of compatible Engine versions for current wrappers.
 #  Lower bound is inclusive, upper bound is exclusive.
 #  ``None`` indicates no bound.
-WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.0.0', None)  # tested at 1.2.0 as of 2021 Aug 29.
+# PySDK 1.7.0 requires Engine 1.7.0 (coincidentally same versions) to support more WAV formats.
+WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.7.0', None)
 
 ASR_ENGINE_HOST = os.getenv('ASR_ENGINE_HOST', 'localhost')
 ASR_ENGINE_PORT = int(os.getenv('ASR_ENGINE_PORT', 9900))

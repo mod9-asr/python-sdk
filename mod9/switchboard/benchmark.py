@@ -14,7 +14,7 @@ DESCRIPTION = """
 This specialized tool can be used to score the Switchboard benchmark by suitably formatting and
 scoring output from the Mod9 ASR Engine. It reads lines of JSON (i.e. JSONL format) from stdin and
 prints a report on stdout, saving files in a work directory.
-It can also read input formatted as per the Google STT service as well as Amazon Transcribe.
+It can also read results formatted by Google Cloud STT, Amazon Transcribe, or IBM Watson STT.
 This uses the official NIST SCTK software, which is expected to be installed on the system, and also
 requires certain reference data files which might be downloaded. These dependencies are already
 installed in the mod9/asr Docker image for convenience.
@@ -206,6 +206,20 @@ def convert_google_json_to_jsonl(json_filename, jsonl_filename):
             # especially problematic for dual-channel telephony in which there are long stretches
             # of silence between speaker turns, during which words are mistimed.
             start_time = end_time
+
+
+def convert_ibm_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert IBM Watson formatted JSON to ASR Engine formatted JSON lines.
+    """
+    response = json.load(open(json_filename, 'r', encoding='utf-8'))
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        for result in response['results'][0]['results']:  # awkwardly nested
+            reply = {'final': True}
+            reply['transcript'] = result['alternatives'][0]['transcript'].strip()
+            reply['words'] = [{'word': w, 'interval': [start, end]}
+                              for w, start, end, in result['alternatives'][0]['timestamps']]
+            jsonl_file.write(json.dumps(reply) + '\n')
 
 
 def convert_amazon_json_to_jsonl(json_filename, jsonl_filename):
@@ -825,15 +839,22 @@ def main_helper():
     for line in sys.stdin:
         lines.append(line)
 
-    if lines and lines[0] == '{\n':
+    if lines and lines[0] == '{\n' and ('"name"' in lines[1] or '"results"' in lines[1]):
         info(f"Save JSON (Google STT formatted) from stdin: {spkid}.json")
         with open(spkid+'.json', 'w') as f:
             for line in lines:
                 f.write(line)
         info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
         convert_google_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    elif lines and lines[0] == '{\n' and '"created"' in lines[1]:
+        info(f"Save JSON (IBM Watson formatted) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_ibm_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
     elif lines and lines[0].startswith('{"jobName"'):
-        info(f"Save JSON (Amazon Transcribe formatted) from stdin: {spkid}.json")
+        info(f"Save JSON (as Amazon Transcribe) from stdin: {spkid}.json")
         with open(spkid+'.json', 'w') as f:
             for line in lines:
                 f.write(line)
