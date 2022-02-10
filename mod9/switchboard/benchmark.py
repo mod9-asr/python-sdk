@@ -14,7 +14,7 @@ DESCRIPTION = """
 This specialized tool can be used to score the Switchboard benchmark by suitably formatting and
 scoring output from the Mod9 ASR Engine. It reads lines of JSON (i.e. JSONL format) from stdin and
 prints a report on stdout, saving files in a work directory.
-It can also read results formatted by Google, Amazon, Microsoft, or IBM.
+It can also read results formatted by Google, Amazon, Microsoft, Deepgram, or IBM.
 This uses the official NIST SCTK software, which is expected to be installed on the system, and also
 requires certain reference data files which might be downloaded. These dependencies are already
 installed in the mod9/asr Docker image for convenience.
@@ -206,6 +206,20 @@ def convert_google_json_to_jsonl(json_filename, jsonl_filename):
             # especially problematic for dual-channel telephony in which there are long stretches
             # of silence between speaker turns, during which words are mistimed.
             start_time = end_time
+
+
+def convert_deepgram_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert Deepgram formatted JSON to ASR Engine formatted JSON lines.
+    """
+    response = json.load(open(json_filename, 'r', encoding='utf-8'))
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        result = response['results']['channels'][0]
+        reply = {'final': True}
+        reply['transcript'] = result['alternatives'][0]['transcript']
+        reply['words'] = [{'word': w['word'], 'interval': [w['start'], w['end']]}
+                          for w in result['alternatives'][0]['words']]
+        jsonl_file.write(json.dumps(reply) + '\n')
 
 
 def convert_ibm_json_to_jsonl(json_filename, jsonl_filename):
@@ -866,7 +880,14 @@ def main_helper():
     for line in sys.stdin:
         lines.append(line)
 
-    if lines and lines[0] == '{\n' and ('"name"' in lines[1] or '"results"' in lines[1]):
+    if lines and lines[0].startswith('{"metadata"'):
+        info(f"Save JSON (Deepgram formatted) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_deepgram_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    elif lines and lines[0] == '{\n' and ('"name"' in lines[1] or '"results"' in lines[1]):
         info(f"Save JSON (Google STT formatted) from stdin: {spkid}.json")
         with open(spkid+'.json', 'w') as f:
             for line in lines:
