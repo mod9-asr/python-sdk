@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.7.0'
+WRAPPER_VERSION = '1.8.0'
 
 # CHANGELOG:
+#   1.8.0 (08 Feb 2022):
+#   - Add Microsoft formatted result handling to switchboard benchmark script.
 #   1.7.0 (02 Feb 2022):
 #   - Allow multiple clients to connect to different Engine hosts and ports.
 #   - Support more audio encodings: 24- and 32-bit signed integers and 32-bit float.

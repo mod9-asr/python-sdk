@@ -14,7 +14,7 @@ DESCRIPTION = """
 This specialized tool can be used to score the Switchboard benchmark by suitably formatting and
 scoring output from the Mod9 ASR Engine. It reads lines of JSON (i.e. JSONL format) from stdin and
 prints a report on stdout, saving files in a work directory.
-It can also read results formatted by Google Cloud STT, Amazon Transcribe, or IBM Watson STT.
+It can also read results formatted by Google, Amazon, Microsoft, or IBM.
 This uses the official NIST SCTK software, which is expected to be installed on the system, and also
 requires certain reference data files which might be downloaded. These dependencies are already
 installed in the mod9/asr Docker image for convenience.
@@ -219,6 +219,32 @@ def convert_ibm_json_to_jsonl(json_filename, jsonl_filename):
             reply['transcript'] = result['alternatives'][0]['transcript'].strip()
             reply['words'] = [{'word': w, 'interval': [start, end]}
                               for w, start, end, in result['alternatives'][0]['timestamps']]
+            jsonl_file.write(json.dumps(reply) + '\n')
+
+
+def convert_msft_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert Microsoft formatted JSON to ASR Engine formatted JSON lines.
+    """
+    def convert_interval(offset_ticks, duration_ticks):
+        start_time = offset_ticks / 10_000_000
+        return [round(start_time, 2), round(start_time + duration_ticks / 10_000_000, 2)]
+
+    response = json.load(open(json_filename, 'r', encoding='utf-8'))
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        for result in response['recognizedPhrases']:
+            reply = {'final': True}
+            reply['transcript'] = result['nBest'][0]['lexical']
+
+            reply['alternatives'] = [
+                {'transcript': nbest['lexical']} for nbest in result['nBest']
+            ]
+
+            reply['interval'] = convert_interval(result['offsetInTicks'], result['durationInTicks'])
+            reply['words'] = [{
+                'word': w['word'],
+                'interval': convert_interval(w['offsetInTicks'], w['durationInTicks'])
+            } for w in result['nBest'][0]['words']]
             jsonl_file.write(json.dumps(reply) + '\n')
 
 
@@ -504,9 +530,10 @@ def refilter_ctm(ctm_in_filename, ctm_out_filename,
 
     Unfortunately, this can create rather long alternations, particularly
     for transcript-level N-best alternatives. This can cause problems for
-    the downstream NIST SCTK sclite software which may segfault due to
-    hardcoded buffer lengths. To mitigate this, set max_expansions. This
-    shouldn't be needed for word-level or phrase-level alternatives.
+    the downstream NIST SCTK sclite software which may segfault due to low
+    precision of indices (see https://github.com/usnistgov/SCTK/pull/34).
+    To mitigate this, set max_expansions. This hack shouldn't be needed for
+    word-level or phrase-level alternatives, or if the bugfix PR is merged.
     """
     in_alt = False
     in_nested_alt = False
@@ -835,7 +862,7 @@ def main_helper():
     filename_id, channel_id = spkid.rsplit('_', 1)
 
     lines = []
-    info('Read Engine replies or Google JSON on stdin: ...', flush=True)
+    info("Read Engine replies or other vendors' JSON on stdin: ...", flush=True)
     for line in sys.stdin:
         lines.append(line)
 
@@ -853,6 +880,13 @@ def main_helper():
                 f.write(line)
         info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
         convert_ibm_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    elif lines and lines[0] == '{\n' and '"source"' in lines[1]:
+        info(f"Save JSON (Microsoft formatted) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_msft_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
     elif lines and lines[0].startswith('{"jobName"'):
         info(f"Save JSON (as Amazon Transcribe) from stdin: {spkid}.json")
         with open(spkid+'.json', 'w') as f:
