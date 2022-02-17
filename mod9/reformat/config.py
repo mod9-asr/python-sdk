@@ -6,9 +6,12 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.9.0'
+WRAPPER_VERSION = '1.10.0'
 
 # CHANGELOG:
+#   1.10.0 (16 Feb 2022):
+#   - Ignore empty word in Switchboard benchmark scoring script (for legacy Remeeting ASR API).
+#   - Add Rev.ai formatted result handling to Switchboard benchmark script.
 #   1.9.0 (09 Feb 2022):
 #   - Add Deepgram formatted result handling to Switchboard benchmark script.
 #   1.8.0 (08 Feb 2022):

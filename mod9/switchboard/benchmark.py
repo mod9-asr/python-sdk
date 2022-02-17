@@ -14,7 +14,7 @@ DESCRIPTION = """
 This specialized tool can be used to score the Switchboard benchmark by suitably formatting and
 scoring output from the Mod9 ASR Engine. It reads lines of JSON (i.e. JSONL format) from stdin and
 prints a report on stdout, saving files in a work directory.
-It can also read results formatted by Google, Amazon, Microsoft, Deepgram, or IBM.
+It can also read results formatted by Google, Amazon, Microsoft, Deepgram, Rev.ai or IBM.
 This uses the official NIST SCTK software, which is expected to be installed on the system, and also
 requires certain reference data files which might be downloaded. These dependencies are already
 installed in the mod9/asr Docker image for convenience.
@@ -30,9 +30,11 @@ ALTERNATIVES_LEVELS = [
 
 OMITTED_WORDS = [
     # These non-speech words are not transcribed in the reference, and will always hurt the score.
-    '[cough]',
-    '[laughter]',
-    '[noise]',
+    '[cough]',        # Kaldi recipes
+    '[laughter]',     # Kaldi recipes
+    '[noise]',        # Kaldi recipes
+    '<affirmative>',  # Rev.ai
+    '<laugh>',        # Rev.ai
 ]
 
 REFERENCE_GLM = 'switchboard-benchmark.glm'
@@ -285,6 +287,25 @@ def convert_amazon_json_to_jsonl(json_filename, jsonl_filename):
         jsonl_file.write(json.dumps(reply) + '\n')
 
 
+def convert_revai_json_to_jsonl(json_filename, jsonl_filename):
+    """
+    Convert Rev.ai formatted JSON to ASR Engine formatted JSON lines.
+    """
+    def multiword(word):
+        """NIST SCTK does not like a "word" with spaces in it, so rewrite it with underscores."""
+        return word.replace(' ', '_')
+
+    response = json.load(open(json_filename, 'r', encoding='utf-8'))
+    with open(jsonl_filename, 'w', encoding='utf-8') as jsonl_file:
+        for segment in response['monologues']:
+            reply = {'final': True}
+            reply['transcript'] = ' '.join([multiword(x['value']) for x in segment['elements']
+                                            if x['type'] == 'text'])
+            reply['words'] = [{'word': multiword(w['value']), 'interval': [w['ts'], w['end_ts']]}
+                              for w in segment['elements'] if w['type'] == 'text']
+            jsonl_file.write(json.dumps(reply) + '\n')
+
+
 def convert_jsonl_to_ctm(
         jsonl_filename, ctm_filename,
         key1, key2,
@@ -359,9 +380,9 @@ def convert_jsonl_to_ctm(
 
                         word = word_obj['word']
                         if not word:
-                            # This won't happen with Mod9 ASR Engine, but could in theory represent
-                            # a situation in which the top-ranked word alternative is silence.
-                            error('Unexpected empty word.')
+                            # This happens with the legacy Remeeting ASR API (IBM-compatible format)
+                            # to represent situations where a top-ranked word alternative is silence.
+                            continue
 
                         if word in omitted_words:
                             continue
@@ -915,6 +936,13 @@ def main_helper():
                 f.write(line)
         info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
         convert_amazon_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
+    elif lines and lines[0].startswith('{"monologues"'):
+        info(f"Save JSON (as Rev.ai) from stdin: {spkid}.json")
+        with open(spkid+'.json', 'w') as f:
+            for line in lines:
+                f.write(line)
+        info(f"Convert JSON to Engine formatted JSON lines: {spkid}.jsonl")
+        convert_revai_json_to_jsonl(spkid+'.json', spkid+'.jsonl')
     else:
         info(f"Save JSON lines (Engine replies) from stdin: {spkid}.jsonl")
         with open(spkid+'.jsonl', 'w') as f:
