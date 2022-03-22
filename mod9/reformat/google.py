@@ -83,8 +83,11 @@ class GoogleConfigurationSettingsAndMappings:
             'word-intervals',
             'transcript-formatted',
             'transcript-alternatives',
+            'channels',
             'language-code',          # transformed to a real Mod9 option
             'model',                  # transformed to a real Mod9 option
+            'recognition-per-channel',  # only works in speech_mod9 or REST. This setting
+                                        # is ignored if true and error if false.
             'phrase-alternatives',    # only works in speech_mod9 or REST
             'word-alternatives',      # only works in speech_mod9 or REST
             'latency',                # only works in speech_mod9
@@ -100,8 +103,10 @@ class GoogleConfigurationSettingsAndMappings:
             'enableWordTimeOffsets',
             'enableAutomaticPunctuation',
             'maxAlternatives',
+            'audioChannelCount',
             'languageCode',
             'model',
+            'enableSeparateRecognitionPerChannel',
             'maxPhraseAlternatives',  # only works in speech_mod9 or REST
             'maxWordAlternatives',    # only works in speech_mod9 or REST
             'latency',                # only works in speech_mod9
@@ -135,6 +140,7 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_timestamp_allowed_values = {True, False}
         self.google_punctuation_allowed_values = {True, False}
         self.google_max_alternatives_allowed_values = range(1001)
+        self.google_audio_channel_count_allowed_values = ObjectContainingEverything()
         self.google_language_code_allowed_values = ObjectContainingEverything()
         self.google_model_allowed_values = {'phone_call', 'video', 'default'}
         self.google_max_phrase_alternatives_allowed_values = range(10001)
@@ -153,6 +159,7 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_timestamp_allowed_values,
             self.google_punctuation_allowed_values,
             self.google_max_alternatives_allowed_values,
+            self.google_audio_channel_count_allowed_values,
             self.google_language_code_allowed_values,
             self.google_model_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
@@ -274,7 +281,7 @@ def input_to_mod9(
         if isinstance(mod9_audio_settings, GeneratorType):
             # Split generator so utils.parse_wav_encoding() can look at content header.
             mod9_audio_settings, mod9_audio_settings_clone = itertools.tee(mod9_audio_settings)
-        wav_encoding, wav_sample_rate = utils.parse_wav_encoding(mod9_audio_settings)
+        wav_encoding, wav_sample_rate, wav_channels = utils.parse_wav_encoding(mod9_audio_settings)
         if wav_encoding:
             mod9_config_settings['format'] = 'wav'
             if 'encoding' in mod9_config_settings:
@@ -284,7 +291,6 @@ def input_to_mod9(
                         "WAV file format encoded as %s should match config specified as %s."
                         % (wav_encoding, mod9_config_settings['encoding'])
                     )
-                # The Mod9 ASR Engine complains if both WAV format and audio encoding are specified.
                 del mod9_config_settings['encoding']
             if wav_sample_rate:
                 if 'rate' in mod9_config_settings:
@@ -293,6 +299,14 @@ def input_to_mod9(
                                          f" differs from WAV header rate, {wav_sample_rate}.")
                 else:
                     mod9_config_settings['rate'] = wav_sample_rate
+            if 'channels' in mod9_config_settings:
+                if wav_channels and wav_channels != mod9_config_settings['channels']:
+                    # The Google Cloud STT API complains if WAV header and channels are mismatched.
+                    raise ConflictingGoogleAudioSettingsError(
+                        f"Specified channel count {mod9_config_settings['channels']}, "
+                        f"differs from WAV header channel count {wav_channels}.")
+                # The Mod9 ASR Engine complains if both WAV format and audio channels are specified.
+                del mod9_config_settings['channels']
         else:
             mod9_config_settings['format'] = 'raw'
             if 'encoding' not in mod9_config_settings:
@@ -467,6 +481,19 @@ def google_config_settings_to_mod9(
         mod9_config_settings.update(extra_options)
         del mod9_config_settings['options-json']
 
+    # This option does not have an equivalent Mod9 option.
+    # For multi-channel audio, Mod9 only supports transcribing all channels. The setting is true
+    # by default and raises an exception if it's set to false.
+    # GSTT sets enableSeparateRecognitionPerChannel to false by default and only transcribes
+    # the first channel in that case.
+    if 'recognition-per-channel' in mod9_config_settings:
+        if not mod9_config_settings['recognition-per-channel'] and \
+           mod9_config_settings.get('channels', 1) > 1:
+            # Only `true` value is supported.
+            raise ValueError('Setting enableSeparateRecognitionPerChannel must be set to '
+                             "'true' for multichannel audio.")
+        del mod9_config_settings['recognition-per-channel']
+
     return mod9_config_settings
 
 
@@ -584,6 +611,7 @@ def result_from_mod9(
                 alternative['transcript'] += mod9_result['transcript_formatted']
             else:
                 alternative['transcript'] += mod9_result['transcript']
+
             alternatives.append(alternative)
 
         # Build the WordInfo if Mod9 has returned word-level results.
@@ -605,17 +633,22 @@ def result_from_mod9(
                 words.append(new_word)
             alternatives[0]['words'] = words
 
-        google_result = OrderedDict(
-            [
-                ('alternatives', alternatives),
-                ('isFinal', mod9_result['final']),
-                # NOTE: this is only returned in v1p1beta1, and it's lowercase for some reason.
-                ('languageCode', language_code),
-                ('resultEndTime', "{:.3f}s".format(mod9_result['interval'][1])),
-                # NOTE: this will be retained only in speech_mod9.
-                ('asrModel', asr_model),
-            ]
-        )
+        google_result = {
+            'alternatives': alternatives,
+            'isFinal': mod9_result['final'],
+        }
+
+        if 'channel' in mod9_result:
+            google_result['channelTag'] = int(mod9_result['channel'])
+
+        # NOTE: this is only returned in v1p1beta1, and it's lowercase for some reason.
+        google_result['languageCode'] = language_code
+
+        google_result['resultEndTime'] = "{:.3f}s".format(mod9_result['interval'][1])
+
+        # NOTE: this will be retained only in speech_mod9.
+        google_result['asrModel'] = asr_model
+
         if not mod9_result['final']:
             google_result['stability'] = 0.0  # Google's default.
 

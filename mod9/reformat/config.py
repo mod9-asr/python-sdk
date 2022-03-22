@@ -6,9 +6,19 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.10.0'
+WRAPPER_VERSION = '1.11.0'
 
 # CHANGELOG:
+#   1.11.0 (21 Mar 2022):
+#   - Allow longer connection timeout, useful for benchmarking with speed=3.
+#   - Support multichannel audio for any number of channels, unlike Google that has restrictions
+#     based on the encoding. Internally, the Engine supports a max of 128 byte-aligned samples.
+#     for 16-bit encoding, that is 64 channels.
+#     - The request option "audioChannelCount" indicates the number of channels.
+#     - The request option "enableSeparateRecognitionPerChannel" must be `true` for multichannel
+#       audio recognized via Mod9. This is unlike Google that recognizes only the first channel
+#       for the default value of `false`.
+#     - The response field "channelTag" indicates the channel number of the segment.
 #   1.10.0 (16 Feb 2022):
 #   - Ignore empty word in Switchboard benchmark scoring script (for legacy Remeeting ASR API).
 #   - Add Rev.ai formatted result handling to Switchboard benchmark script.
@@ -84,14 +94,14 @@ WRAPPER_VERSION = '1.10.0'
 # Range of compatible Engine versions for current wrappers.
 #  Lower bound is inclusive, upper bound is exclusive.
 #  ``None`` indicates no bound.
-# PySDK 1.7.0 requires Engine 1.7.0 (coincidentally same versions) to support more WAV formats.
-WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.7.0', None)
+# PySDK 1.11.0 requires Engine 1.9.0+ to support multichannel audio.
+WRAPPER_ENGINE_COMPATIBILITY_RANGE = ('1.9.0', None)
 
 ASR_ENGINE_HOST = os.getenv('ASR_ENGINE_HOST', 'localhost')
 ASR_ENGINE_PORT = int(os.getenv('ASR_ENGINE_PORT', 9900))
 
 SOCKET_CONNECTION_TIMEOUT_SECONDS = 10.0
-SOCKET_INACTIVITY_TIMEOUT_SECONDS = 120.0
+SOCKET_INACTIVITY_TIMEOUT_SECONDS = 300.0
 ENGINE_CONNECTION_RETRY_SECONDS = 1.0
 
 # These should be small enough so that it doesn't trigger the Engine's read timeout (10s default).

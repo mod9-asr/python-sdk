@@ -123,29 +123,32 @@ def parse_wav_encoding(audio_settings):
             False or truthy value, which may be the encoding name.
         int:
             Sample rate if WAV header successfully parsed, else 0.
+        int:
+            Channel count if WAV header is successfully parsed, else 0.
     """
 
     if audio_settings is None:
-        return False, 0
+        return False, 0, 0
     elif isinstance(audio_settings, TeeGeneratorType):
         audio_settings_header = next(audio_settings)
-        return extract_encoding_and_rate_from_wav_header(audio_settings_header)
+        return extract_encoding_rate_channel_from_wav_header(audio_settings_header)
     elif isinstance(audio_settings, str):
         uri_scheme = urlparse(audio_settings).scheme
         if uri_scheme == 'http' or uri_scheme == 'https':
             headers = {'Range': 'bytes=0-28'}
             with requests.get(audio_settings, headers=headers) as r:
                 r.raise_for_status()
-                return extract_encoding_and_rate_from_wav_header(r.content)
+                return extract_encoding_rate_channel_from_wav_header(r.content)
+        # TODO: try to read the WAV header for gs://, s3://, and file:// schemes.
         else:
             # Will fail in the pathological case of a non-WAV file stored with a ``.wav`` suffix,
             #  and when a WAV file is stored without a ``.wav`` suffix.
-            return audio_settings.endswith('.wav'), 0
+            return audio_settings.endswith('.wav'), 0, 0
     else:
         raise TypeError('Expected type None or TeeGeneratorType or str.')
 
 
-def extract_encoding_and_rate_from_wav_header(wav_header):
+def extract_encoding_rate_channel_from_wav_header(wav_header):
     """
     Attempt to extract encoding, sample rate from possible WAV header.
 
@@ -158,6 +161,8 @@ def extract_encoding_and_rate_from_wav_header(wav_header):
             False or truthy value, which may be the encoding name.
         int:
             Sample rate if WAV header successfully parsed, else 0.
+        int:
+            Channel count if WAV header is successfully parsed, else 0.
     """
     if wav_header[:4] == b'RIFF' and wav_header[8:12] == b'WAVE':
         # Get the encoding type, which is always truthy.
@@ -173,11 +178,13 @@ def extract_encoding_and_rate_from_wav_header(wav_header):
         else:
             # TODO: handle WAVE_FORMAT_EXTENSIBLE with subformats.
             wav_encoding = True
+        # Get number of channels.
+        channels = int.from_bytes(wav_header[22:24], byteorder='little')
         # Get the sample rate.
         sample_rate = int.from_bytes(wav_header[24:28], byteorder='little')
-        return wav_encoding, sample_rate
+        return wav_encoding, sample_rate, channels
     else:
-        return False, 0
+        return False, 0, 0
 
 
 def camel_case_to_snake_case(camel_case_string):

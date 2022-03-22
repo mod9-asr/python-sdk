@@ -206,11 +206,12 @@ class SpeechRecognitionResult(proto.Message):
             Indicate which ASR model is being used.
             Mod9-only attribute.
         channel_tag (int):
-            Mod9: not available at present.
+            Channel number of the result transcript.
     """
 
     alternatives = proto.RepeatedField(SpeechRecognitionAlternative, number=1)
     language_code = proto.Field(proto.STRING, number=5)
+    channel_tag = proto.Field(proto.INT32, number=2)
 
     # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
@@ -270,6 +271,8 @@ class StreamingRecognitionResult(proto.Message):
             language tag of the language in this result. This language
             code was detected to have the most likelihood of being
             spoken in the audio.
+        channel_tag (int):
+            Channel number of the result transcript.
         phrases (Sequence[SpeechRecognitionPhraseAlternative]):
             Sequence of phrase alternatives in increasing time order.
             Mod9-only attribute.
@@ -279,8 +282,6 @@ class StreamingRecognitionResult(proto.Message):
         asr_model (str):
             Indicate which ASR model is being used.
             Mod9-only attribute.
-        channel_tag (int):
-            Mod9: not available at present.
     """
 
     alternatives = proto.RepeatedField(SpeechRecognitionAlternative, number=1)
@@ -288,6 +289,7 @@ class StreamingRecognitionResult(proto.Message):
     stability = proto.Field(proto.FLOAT, number=3)
     result_end_time = proto.Field(duration.Duration, number=4)
     language_code = proto.Field(proto.STRING, number=6)
+    channel_tag = proto.Field(proto.INT32, number=5)
 
     # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
@@ -423,6 +425,13 @@ class RecognitionConfig(proto.Message):
             languages. Setting this for requests in other languages
             has no effect at all. The default 'false' value does not add
             punctuation to result hypotheses.
+        audio_channel_count (int):
+            Number of channels present in the audio.
+        enable_separate_recognition_per_channel (bool):
+            Mod9: Only supports ``true`` value for multi-channel audio, i.e.
+            it only supports transcribing all channels.
+            This is different from GSTT which transcribes only the first
+            channel if the value is ``false``.
         max_phrase_alternatives (int):
             Mod9-only attribute. Maximum number of phrase hypotheses to
             be returned. Specifically, the maximum number of
@@ -458,10 +467,6 @@ class RecognitionConfig(proto.Message):
         intervals_json (str):
             Mod9-only attribute. Specific intervals to be transcribed,
             specified as a JSON object.
-        audio_channel_count (int):
-            Mod9: not available at present.
-        enable_separate_recognition_per_channel (bool):
-            Mod9: not available at present.
         alternative_language_codes (Sequence[str]):
             Mod9: not available at present.
         profanity_filter (bool):
@@ -489,8 +494,6 @@ class RecognitionConfig(proto.Message):
         OVERRIDE: The encoding of the audio data sent in the request.
         Mod9 subclass to support Mod9-only attributes:
         ``ALAW``, ``LINEAR24``, ``LINEAR32``, and ``FLOAT32``.
-
-        All encodings support only 1 channel (mono) audio.
 
         For best results, the audio source should be captured and
         transmitted using a lossless encoding (e.g. ``LINEAR16``).
@@ -529,6 +532,8 @@ class RecognitionConfig(proto.Message):
     model = proto.Field(proto.STRING, number=13)
     enable_word_confidence = proto.Field(proto.BOOL, number=15)
     enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
+    audio_channel_count = proto.Field(proto.INT32, number=7)
+    enable_separate_recognition_per_channel = proto.Field(proto.BOOL, number=12)
 
     # Mod9-only attributes:
     max_phrase_alternatives = proto.Field(proto.INT32, number=901)
