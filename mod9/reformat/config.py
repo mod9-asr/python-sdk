@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.0'
+WRAPPER_VERSION = '1.11.1'
 
 # CHANGELOG:
+#   1.11.1 (22 Mar 2022):
+#   - Fix minor bug to allow asrModel request option to be specified.
 #   1.11.0 (21 Mar 2022):
 #   - Allow longer connection timeout, useful for benchmarking with speed=3.
 #   - Support multichannel audio for any number of channels, unlike Google that has restrictions

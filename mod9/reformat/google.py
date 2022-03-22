@@ -143,6 +143,7 @@ class GoogleConfigurationSettingsAndMappings:
         self.google_audio_channel_count_allowed_values = ObjectContainingEverything()
         self.google_language_code_allowed_values = ObjectContainingEverything()
         self.google_model_allowed_values = {'phone_call', 'video', 'default'}
+        self.google_enable_separate_recognition_per_channel_allowed_values = {True, False},
         self.google_max_phrase_alternatives_allowed_values = range(10001)
         self.google_max_word_alternatives_allowed_values = range(10001)
         self.latency_allowed_values = RealNumericalRangeObject(0.01, 3.0)
@@ -162,6 +163,7 @@ class GoogleConfigurationSettingsAndMappings:
             self.google_audio_channel_count_allowed_values,
             self.google_language_code_allowed_values,
             self.google_model_allowed_values,
+            self.google_enable_separate_recognition_per_channel_allowed_values,
             self.google_max_phrase_alternatives_allowed_values,
             self.google_max_word_alternatives_allowed_values,
             self.latency_allowed_values,

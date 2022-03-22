@@ -190,6 +190,8 @@ class SpeechRecognitionResult(proto.Message):
             alternatives are ordered in terms of accuracy, with the top
             (first) alternative being the most probable, as ranked by
             the recognizer.
+        channel_tag (int):
+            Channel number of the result transcript.
         language_code (str):
             Output only. The
             `BCP-47 <https://www.rfc-editor.org/rfc/bcp/bcp47.txt>`__
@@ -205,13 +207,11 @@ class SpeechRecognitionResult(proto.Message):
         asr_model (str):
             Indicate which ASR model is being used.
             Mod9-only attribute.
-        channel_tag (int):
-            Channel number of the result transcript.
     """
 
     alternatives = proto.RepeatedField(SpeechRecognitionAlternative, number=1)
-    language_code = proto.Field(proto.STRING, number=5)
     channel_tag = proto.Field(proto.INT32, number=2)
+    language_code = proto.Field(proto.STRING, number=5)
 
     # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
@@ -265,14 +265,14 @@ class StreamingRecognitionResult(proto.Message):
         result_end_time (duration.Duration):
             Time offset of the end of this result relative to the
             beginning of the audio.
+        channel_tag (int):
+            Channel number of the result transcript.
         language_code (str):
             Output only. The
             `BCP-47 <https://www.rfc-editor.org/rfc/bcp/bcp47.txt>`__
             language tag of the language in this result. This language
             code was detected to have the most likelihood of being
             spoken in the audio.
-        channel_tag (int):
-            Channel number of the result transcript.
         phrases (Sequence[SpeechRecognitionPhraseAlternative]):
             Sequence of phrase alternatives in increasing time order.
             Mod9-only attribute.
@@ -288,8 +288,8 @@ class StreamingRecognitionResult(proto.Message):
     is_final = proto.Field(proto.BOOL, number=2)
     stability = proto.Field(proto.FLOAT, number=3)
     result_end_time = proto.Field(duration.Duration, number=4)
-    language_code = proto.Field(proto.STRING, number=6)
     channel_tag = proto.Field(proto.INT32, number=5)
+    language_code = proto.Field(proto.STRING, number=6)
 
     # Mod9-only attributes:
     phrases = proto.RepeatedField(SpeechRecognitionPhraseAlternative, number=901)
@@ -528,12 +528,12 @@ class RecognitionConfig(proto.Message):
     sample_rate_hertz = proto.Field(proto.INT32, number=2)
     language_code = proto.Field(proto.STRING, number=3)
     max_alternatives = proto.Field(proto.INT32, number=4)
+    audio_channel_count = proto.Field(proto.INT32, number=7)
     enable_word_time_offsets = proto.Field(proto.BOOL, number=8)
+    enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
+    enable_separate_recognition_per_channel = proto.Field(proto.BOOL, number=12)
     model = proto.Field(proto.STRING, number=13)
     enable_word_confidence = proto.Field(proto.BOOL, number=15)
-    enable_automatic_punctuation = proto.Field(proto.BOOL, number=11)
-    audio_channel_count = proto.Field(proto.INT32, number=7)
-    enable_separate_recognition_per_channel = proto.Field(proto.BOOL, number=12)
 
     # Mod9-only attributes:
     max_phrase_alternatives = proto.Field(proto.INT32, number=901)
