@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.1'
+WRAPPER_VERSION = '1.11.2'
 
 # CHANGELOG:
+#   1.11.2 (28 Mar 2022):
+#   - Fix minor bug to allow multiple rescoring after running with --sclite option.
 #   1.11.1 (22 Mar 2022):
 #   - Fix minor bug to allow asrModel request option to be specified.
 #   1.11.0 (21 Mar 2022):

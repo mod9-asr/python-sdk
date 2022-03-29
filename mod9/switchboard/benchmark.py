@@ -865,9 +865,9 @@ def main_helper():
     os.chdir(args.workdir)
 
     if args.sclite:
-        run('cat *.ctm.refilt > overall.refilt.ctm')
-        run('cat *.stm.refilt > overall.refilt.stm')
-        run('sclite -h overall.refilt.ctm ctm -r overall.refilt.stm stm -n overall.nist '
+        run('cat *.ctm.refilt > overall.ctm.refilt_')
+        run('cat *.stm.refilt > overall.stm.refilt_')
+        run('sclite -h overall.ctm.refilt_ ctm -r overall.stm.refilt_ stm -n overall.nist '
             f"{SCLITE_OPTS} -o sum",
             capture_output=False)
         run("cat overall.nist.sys", capture_output=False)
