@@ -666,7 +666,10 @@ class SpeechClient(object):
                 "the individual field arguments should be set."
             )
         if not isinstance(request, RecognizeRequest):
-            request = RecognizeRequest(**request)
+            if request is None:
+                request = RecognizeRequest(config=config, audio=audio)
+            else:
+                request = RecognizeRequest(**request)
         return common.recognize(
             request,
             module=sys.modules[__name__],

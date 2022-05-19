@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.2'
+WRAPPER_VERSION = '1.11.3'
 
 # CHANGELOG:
+#   1.11.3 (19 May 2022):
+#   - Fix major bugs in Python SDK caused by an internal refactoring circa version 1.7.0.
 #   1.11.2 (28 Mar 2022):
 #   - Fix minor bug to allow multiple rescoring after running with --sclite option.
 #   1.11.1 (22 Mar 2022):

@@ -45,8 +45,10 @@ class Mod9ASREngineTransport(object):
     _wrapped_methods = {}
 
     def __init__(self, host=None, port=None):
-        self._wrapped_methods[self.recognize] = recognize
-        self._wrapped_methods[self.streaming_recognize] = streaming_recognize
+        self._wrapped_methods[self.recognize] = \
+            self.recognize
+        self._wrapped_methods[self.streaming_recognize] = \
+            self.streaming_recognize
         self.host = host
         self.port = port
 
