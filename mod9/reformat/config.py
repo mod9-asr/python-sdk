@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.3'
+WRAPPER_VERSION = '1.11.4'
 
 # CHANGELOG:
+#   1.11.4 (13 May 2023):
+#   - Pin Flask to version <2.3 due to deprecations.
 #   1.11.3 (19 May 2022):
 #   - Fix major bugs in Python SDK caused by an internal refactoring circa version 1.7.0.
 #   1.11.2 (28 Mar 2022):
@@ -70,7 +72,7 @@ WRAPPER_VERSION = '1.11.3'
 #   1.4.1 (27 Nov 2021):
 #   - Minor bugfixes.
 #   1.4.0 (23 Nov 2021):
-#   - Add mod9-asr-switchboard-benchmark to replicate results at rmtg.co/benchmark.
+#   - Add mod9-asr-switchboard-benchmark to replicate results at remeeting.com/benchmark.
 #   1.3.0 (18 Nov 2021):
 #   - Add mod9-asr-elasticsearch-client to demonstrate indexing of phrase alternatives.
 #   - Enable non-English languages to be specified with "languageCode" option.

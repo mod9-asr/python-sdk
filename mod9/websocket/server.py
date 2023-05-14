@@ -30,9 +30,7 @@ newlines are required to terminate each reply.
 
 Multiple clients can be served concurrently by this WebSocket server, but
 beware that its scalability and robustness is somewhat uncertain:
-See https://websockets.readthedocs.io/en/stable/deployment.html
-
-TODO: SSL support coming soon!
+See https://websockets.readthedocs.io/en/stable/topics/deployment.html
 """
 
 import argparse

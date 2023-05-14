@@ -11,6 +11,9 @@ install_requires = [
     'aiofiles>=0.5.0',
     'boto3>=1.9.0',
     'elasticsearch>=7.8.1',
+    # TODO: rewrite code to workaround Flask deprecation:
+    # https://github.com/pallets/flask/pull/4995
+    'flask<2.3',
     'flask-restful>=0.3.9',
     'google-auth>=1.22.0',
     'google-cloud-speech>=2.0.0',
