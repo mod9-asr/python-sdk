@@ -21,6 +21,9 @@ install_requires = [
     'google-resumable-media>=1.0.0',
     'packaging>=15.0',
     'proto-plus>=1.4.0',
+    # HACK: protobuf 4 changes the precision of floats to be unrounded.
+    # TODO: figure out how to make this keep rounded precision at v4.
+    'protobuf<4',
     'websockets>=8.0',
 ]
 

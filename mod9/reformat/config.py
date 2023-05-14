@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.4'
+WRAPPER_VERSION = '1.11.5'
 
 # CHANGELOG:
+#   1.11.5 (14 May 2023):
+#   - Pin protobuf to version <4 due to differences in numerical precision.
 #   1.11.4 (13 May 2023):
 #   - Pin Flask to version <2.3 due to deprecations.
 #   1.11.3 (19 May 2022):
