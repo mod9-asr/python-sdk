@@ -25,3 +25,5 @@ Alternatively, to install from local source:
 tar xzf mod9-asr-$VERSION.tar.gz
 pip3 install ./mod9-asr-$VERSION
 ```
+
+**NOTE**: as of March 2024, library compatibility is limited to `google-cloud-speech<2.23.0`.

@@ -16,7 +16,9 @@ install_requires = [
     'flask<2.3',
     'flask-restful>=0.3.9',
     'google-auth>=1.22.0',
-    'google-cloud-speech>=2.0.0',
+    # TODO: fix this AttributeError regression in v2.23.0:
+    # 'SpeechClient' object has no attribute '_is_universe_domain_valid'
+    'google-cloud-speech<2.23.0',
     'google-cloud-storage>=1.30.0',
     'google-resumable-media>=1.0.0',
     'packaging>=15.0',

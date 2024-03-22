@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.5'
+WRAPPER_VERSION = '1.11.6'
 
 # CHANGELOG:
+#   1.11.6 (21 Mar 2024):
+#   - Pin google-cloud-speech to <2.23 due to SpeechClient._validate_universe_domain().
 #   1.11.5 (14 May 2023):
 #   - Pin protobuf to version <4 due to differences in numerical precision.
 #   1.11.4 (13 May 2023):
