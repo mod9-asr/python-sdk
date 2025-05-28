@@ -26,7 +26,7 @@ install_requires = [
     # HACK: protobuf 4 changes the precision of floats to be unrounded.
     # TODO: figure out how to make this keep rounded precision at v4.
     'protobuf<4',
-    'websockets>=8.0',
+    'websockets>=10',
 ]
 
 setuptools.setup(

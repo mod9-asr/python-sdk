@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.6'
+WRAPPER_VERSION = '1.11.7'
 
 # CHANGELOG:
+#   1.11.7 (27 May 2025)
+#   - Require websocket>10 to use more modern calling patterns.
 #   1.11.6 (21 Mar 2024):
 #   - Pin google-cloud-speech to <2.23 due to SpeechClient._validate_universe_domain().
 #   1.11.5 (14 May 2023):

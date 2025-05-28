@@ -264,7 +264,7 @@ async def send_error(websocket, details, logger):
         logger.debug("Sent error message: %s", reply_message)
 
 
-async def handle_request(websocket, path):
+async def handle_request(websocket, path=None):
     """
     Asynchronously send options and audio from WebSocket to Engine
     socket, then send response from Engine socket to WebSocket.
@@ -367,7 +367,7 @@ async def handle_request(websocket, path):
         logger.info("WebSocket connection closed.")
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--engine-host',
@@ -448,15 +448,17 @@ def main():
         args.host,
         args.port,
     )
-    start_server = websockets.serve(handle_request, host=args.host, port=args.port)
-    asyncio.get_event_loop().run_until_complete(start_server)
 
-    try:
-        asyncio.get_event_loop().run_forever()
-    except KeyboardInterrupt:
-        logger.warning('Exiting on interrupt signal.')
-        sys.exit(130)  # Don't show Python traceback.
+    async with websockets.serve(handle_request, host=args.host, port=args.port) as _:
+        await asyncio.Future()  # Run forever, effectively
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('Exiting on interrupt signal.', file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        sys.exit(1)
