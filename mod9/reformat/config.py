@@ -6,9 +6,11 @@ import logging
 import os
 
 # Current wrappers version.  Note that this is not the same as the Engine version.
-WRAPPER_VERSION = '1.11.7'
+WRAPPER_VERSION = '1.11.8'
 
 # CHANGELOG:
+#   1.11.8 (28 May 2025)
+#   - Revert main() to not be async; it calls async serve(args) instead.
 #   1.11.7 (27 May 2025)
 #   - Require websocket>10 to use more modern calling patterns.
 #   1.11.6 (21 Mar 2024):

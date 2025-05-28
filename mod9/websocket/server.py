@@ -367,7 +367,7 @@ async def handle_request(websocket, path=None):
         logger.info("WebSocket connection closed.")
 
 
-async def main():
+def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--engine-host',
@@ -449,16 +449,20 @@ async def main():
         args.port,
     )
 
+    try:
+        asyncio.run(serve(args))
+    except KeyboardInterrupt:
+        logger.warning('Exiting on interrupt signal.')
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+
+async def serve(args):
     async with websockets.serve(handle_request, host=args.host, port=args.port) as _:
         await asyncio.Future()  # Run forever, effectively
 
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print('Exiting on interrupt signal.', file=sys.stderr)
-        sys.exit(130)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
-        sys.exit(1)
+    main()
